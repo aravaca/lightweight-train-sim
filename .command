@@ -1,5 +1,5 @@
 git add .
-git commit -m "update ui & tighten tasc relax margin"
+git commit -m "limit max speed to 300"
 git push origin main
 
 pip install fastapi uvicorn[standard]
