@@ -758,6 +758,57 @@ body {
   </style>
 </head>
 <body>
+아하, 지금 상황이 딱 감이 온다 😆
+
+내가 전에 준 건:
+
+백엔드 서버(server.js) + API
+
+프론트에서 쓸 JS 함수들(fetch, 로그인/회원가입, 진행도/리더보드 불러오기)
+
+
+까지였고,
+“로그인 창”이라는 실제 HTML UI는 아직 안 만들어 둔 상태야.
+
+그래서 웹페이지는 예전이랑 똑같이 게임 화면만 나오고,
+로그인 폼은 네가 index.html에 직접 <input> / <button> 넣어줘야 보여.
+
+
+---
+
+1. index.html에 로그인 / 회원가입 폼 만들기
+
+tasc/static/index.html 열고, <body> 안에 적당한 위치(예: 맨 위나 좌상단)에 이 블럭을 그대로 붙여줘:
+
+<!-- 로그인 / 회원가입 패널 -->
+<div id="authPanel" style="position: absolute; top: 10px; right: 10px; padding: 10px; border: 1px solid #ccc; background: #fff; z-index: 1000;">
+  <div id="authStatus"></div>
+
+  <div id="authForm">
+    <h3>로그인 / 회원가입</h3>
+    <div>
+      <input id="emailInput" type="email" placeholder="이메일" />
+    </div>
+    <div>
+      <input id="passwordInput" type="password" placeholder="비밀번호" />
+    </div>
+    <div>
+      <input id="nicknameInput" type="text" placeholder="닉네임(회원가입용)" />
+    </div>
+    <div style="margin-top: 6px;">
+      <button id="loginBtn">로그인</button>
+      <button id="signupBtn">회원가입</button>
+      <button id="logoutBtn" style="display:none;">로그아웃</button>
+    </div>
+  </div>
+</div>
+
+<!-- 리더보드 패널 -->
+<div id="leaderboardPanel" style="position: absolute; bottom: 10px; right: 10px; padding: 10px; border: 1px solid #ccc; background: #fff; max-height: 200px; overflow-y: auto; z-index: 1000;">
+  <h3>리더보드(0cm)</h3>
+  <div id="leaderboardBody">로그인 후 불러옵니다.</div>
+</div>
+
 <canvas id="ribbonBig" style="position:fixed; right:0; top:0; bottom:0; width:27px; height:100vh; pointer-events:none; z-index:10002; display:flex; align-items:right; justify-content:center;"></canvas>
 <!-- BEGIN PATCH: Cab 3D Card -->
 <style>
@@ -1040,7 +1091,7 @@ body {
           <input id="inputGrade" type="number" value="0.0" min="-10" max="10" step="0.1" class="form-input">
         </label>
 
-        <label class="form-label"><span id="labelTimeofDay">시간대</span>
+        <label class="form-label"><span id="labelTimeOfDay">시간대</span>
           <select id="timeOfDaySelect" class="form-input">
             <option value="day" selected>주간</option>
             <option value="night">야간</option>
@@ -2865,8 +2916,186 @@ const serverEnabled = !!st.tasc_enabled;
 if (tascToggle.checked !== serverEnabled) {
   tascToggle.checked = serverEnabled; // 서버 기준으로 강제 동기화
 }
+
+if (st.finished && !st.__reportedToServer) {
+  st.__reportedToServer = true;
+  reportResultToServer(st);
+}
 };
 
+ // === 공통 상태 ===
+  window.__authToken = null;
+  window.__me = null;
+  window.__zeroCmCount = 0;
+  window.__bestScore = 0;
+  window.__unlockedSet = new Set();
+
+  function apiBase(path) {
+    return 'http://localhost:4000' + path; // 백엔드 포트
+  }
+
+  // === API 함수들 ===
+  function signup(email, password, nickname) {
+    return fetch(apiBase('/api/signup'), {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ email, password, nickname })
+    }).then(r => r.json());
+  }
+
+  function loginApi(email, password) {
+    return fetch(apiBase('/api/login'), {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ email, password })
+    }).then(r => r.json());
+  }
+
+  function loadProgress() {
+    if (!window.__authToken) return;
+
+    fetch(apiBase('/api/progress'), {
+      headers: { 'Authorization': 'Bearer ' + window.__authToken }
+    })
+      .then(r => r.json())
+      .then(data => {
+        window.__zeroCmCount = data.zero_cm_count;
+        window.__bestScore = data.best_score;
+        window.__unlockedSet = new Set(data.unlocked_trains || []);
+        // TODO: 네가 이미 만든 applyUnlockStateToUI() 있으면 여기 호출
+        if (typeof applyUnlockStateToUI === 'function') {
+          applyUnlockStateToUI();
+        }
+      })
+      .catch(console.error);
+  }
+
+  function loadLeaderboard() {
+    fetch(apiBase('/api/leaderboard?type=zero_cm'))
+      .then(r => r.json())
+      .then(list => {
+        const body = document.getElementById('leaderboardBody');
+        if (!body) return;
+        if (!Array.isArray(list) || !list.length) {
+          body.textContent = '아직 기록된 플레이가 없습니다.';
+          return;
+        }
+        body.innerHTML = list.map(row =>
+          `<div>#${row.rank} ${row.nickname} — 0cm ${row.zero_cm_count}회 · 최고점수 ${row.best_score}</div>`
+        ).join('');
+      })
+      .catch(console.error);
+  }
+
+  // === 운전 결과 서버로 보내기 (네 WebSocket 코드에서 호출) ===
+  function reportResultToServer(st) {
+    if (!window.__authToken) return;
+
+    fetch(apiBase('/api/run-result'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + window.__authToken
+      },
+      body: JSON.stringify({
+        stop_error_m: st.stop_error_m,
+        score: st.score,
+        v0: st.v0,
+        L0: st.L0,
+        train_name: st.train_name,
+        weather: st.weather,
+        tasc_enabled: st.tasc_enabled
+      })
+    })
+      .then(r => r.json())
+      .then(data => {
+        const fb = document.getElementById('feedback') || document.getElementById('message');
+        if (data.newly_unlocked && data.newly_unlocked.length && fb) {
+          fb.innerHTML += `<div class="ok">새 열차 해금!<br>${data.newly_unlocked.join('<br>')}</div>`;
+        }
+        loadProgress();
+        loadLeaderboard();
+      })
+      .catch(console.error);
+  }
+
+  // === 로그인/회원가입 UI 핸들러 ===
+  document.addEventListener('DOMContentLoaded', () => {
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const nicknameInput = document.getElementById('nicknameInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const signupBtn = document.getElementById('signupBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const authStatus = document.getElementById('authStatus');
+
+    function updateAuthUI() {
+      if (window.__me) {
+        authStatus.innerHTML = `✅ 로그인됨: <b>${window.__me.nickname}</b>`;
+        logoutBtn.style.display = 'inline-block';
+      } else {
+        authStatus.textContent = '로그인하지 않음';
+        logoutBtn.style.display = 'none';
+      }
+    }
+
+    loginBtn.addEventListener('click', () => {
+      const email = emailInput.value.trim();
+      const pw = passwordInput.value.trim();
+      if (!email || !pw) {
+        alert('이메일과 비밀번호를 입력해 주세요.');
+        return;
+      }
+
+      loginApi(email, pw).then(data => {
+        if (data.error) {
+          alert('로그인 실패: ' + data.error);
+          return;
+        }
+        window.__authToken = data.token;
+        window.__me = data.user;
+        updateAuthUI();
+        loadProgress();
+        loadLeaderboard();
+      }).catch(err => {
+        console.error(err);
+        alert('로그인 중 오류');
+      });
+    });
+
+    signupBtn.addEventListener('click', () => {
+      const email = emailInput.value.trim();
+      const pw = passwordInput.value.trim();
+      const nick = nicknameInput.value.trim();
+      if (!email || !pw || !nick) {
+        alert('이메일, 비밀번호, 닉네임을 모두 입력해 주세요.');
+        return;
+      }
+
+      signup(email, pw, nick).then(data => {
+        if (data.error) {
+          alert('회원가입 실패: ' + data.error);
+          return;
+        }
+        window.__authToken = data.token;
+        window.__me = data.user;
+        updateAuthUI();
+        loadProgress();
+        loadLeaderboard();
+      }).catch(err => {
+        console.error(err);
+        alert('회원가입 중 오류');
+      });
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      window.__authToken = null;
+      window.__me = null;
+      updateAuthUI();
+    });
+
+    updateAuthUI();
+  });
 /* ===== HUD 그리기 (기존 유지) ===== */
 function drawHUD(st){
   const dpr=devicePixelRatio||1, w=canvas.width, h=canvas.height;
@@ -3698,6 +3927,41 @@ trainFamilyEl.addEventListener('change', populateSeries);
 populateSeries(); // 최초 세팅
 
 
+
+window.__authToken = null;
+window.__me = null;
+
+function apiBase(path) {
+  // 프론트/백엔드가 포트 다르면 여기서 origin 맞추기
+  return 'http://localhost:4000' + path;
+}
+
+function signup(email, password, nickname) {
+  return fetch(apiBase('/api/signup'), {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, password, nickname })
+  }).then(r => r.json());
+}
+
+function login(email, password) {
+  return fetch(apiBase('/api/login'), {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, password })
+  }).then(r => r.json());
+}
+
+
+login(email, password).then(data => {
+  if (data.token) {
+    window.__authToken = data.token;
+    window.__me = data.user;
+    loadProgress(); // 아래 progress 함수
+    loadLeaderboard(); // 리더보드
+  }
+});
+
 </script>
 
 <!-- ===== 10s 언어 토글 (ko <-> en), 피드백 포함 ===== -->
@@ -3729,7 +3993,6 @@ window.__brakeGuideOn = true;
       labelInitSpeed: "초기 속도 (km/h)",
       labelInitDist: "거리 (m)",
       labelGradeInput: "경사도 (‰)",
-      labelTimeofDay: "시간대",
       labelWeather: "날씨",
       labelLoadRate: "승객 탑승률 (%)",
       labelTrainLength: "편성",
@@ -3778,13 +4041,14 @@ window.__brakeGuideOn = true;
       labelRelease: "Release",
       subtitleIntro: 
   "Apply B1/B2 braking and slow down to below 60 km/h by 150 m remaining (P3 TASC beacon). Then, TASC (autopilot) takes over brake control.",
+
+
       labelTASC: "TASC",
       labelTrain: "Train",
       labelSeries: "Series",
       labelInitSpeed: "Initial Speed (km/h)",
       labelInitDist: "Distance (m)",
       labelGradeInput: "Grade (‰)",
-      labelTimeofDay: "Time of Day",
       labelWeather: "Weather",
       labelLoadRate: "Passenger Load (%)",
       labelTrainLength: "Formation",
@@ -3836,7 +4100,6 @@ window.__brakeGuideOn = true;
     labelInitSpeed: document.getElementById("labelInitSpeed"),
     labelInitDist: document.getElementById("labelInitDist"),
     labelGradeInput: document.getElementById("labelGradeInput"),
-    labelTimeofDay: document.getElementById("labelTimeofDay"),
     labelWeather: document.getElementById("labelWeather"),
     labelLoadRate: document.getElementById("labelLoadRate"),
     labelTrainLength: document.getElementById("labelTrainLength"),
@@ -3854,7 +4117,7 @@ window.__brakeGuideOn = true;
       "labelRemainTime","labelSpeed","labelRemainDist","labelGrade","labelNotch",
       "labelStartKey","labelUp","labelDown","labelRelease",
       "labelTASC","labelTrain","labelSeries","labelInitSpeed","labelInitDist",
-      "labelGradeInput","labelWeather","labelLoadRate","labelTrainLength", "labelTimeofDay"
+      "labelGradeInput","labelWeather","labelLoadRate","labelTrainLength"
     ].forEach(k => { if(nodes[k]) nodes[k].innerText = d[k]; });
 
     if(nodes.subtitleIntro) nodes.subtitleIntro.innerHTML = d.subtitleIntro;
