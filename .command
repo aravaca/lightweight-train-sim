@@ -1,5 +1,5 @@
 git add .
-git commit -m "add seoul metro mp3"
+git commit -m "update ui & add description"
 git push origin main
 
 pip install fastapi uvicorn[standard]

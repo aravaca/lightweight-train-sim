@@ -65,8 +65,196 @@ button:hover,.btn-primary:hover{background:linear-gradient(135deg,#0072ff,#00c6f
   }
 }
 
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 #overlay.hide{display:none}
-#overlay .card{max-height:90vh;overflow-y:auto}
+
+/* 메인 카드 자체를 유리판 느낌 + 2컬럼 레이아웃으로 */
+#overlay .card{
+  max-height:100vh;
+  max-width:1000px;
+  width:100%;
+  overflow:hidden;
+  padding:20px 22px 18px;
+  border-radius:20px;
+  border:1px solid rgba(0,246,255,.35);
+  box-shadow:0 18px 40px rgba(0,0,0,.85);
+  background:
+    radial-gradient(circle at 0 0, rgba(0,246,255,.14), transparent 55%),
+    radial-gradient(circle at 100% 0, rgba(0,170,255,.10), transparent 45%),
+    rgba(5,10,18,.94);
+}
+
+/* 폼 영역(left) + 프리뷰(right) */
+.overlay-grid{
+  display:grid;
+  grid-template-columns:minmax(0,0.6fr) minmax(460px,1fr);
+  gap:20px;
+  align-items:stretch;
+  margin-top:14px;
+}
+
+.overlay-main{
+  overflow-y:auto;
+  padding-right:4px;
+}
+
+.overlay-preview{
+  position:relative;
+  border-radius:16px;
+  background:
+    radial-gradient(circle at 0 0,rgba(0,246,255,.16),transparent 55%),
+    rgba(6,13,24,.97);
+  border:1px solid rgba(0,246,255,.3);
+  box-shadow:0 12px 30px rgba(0,0,0,.8);
+  padding:14px 14px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+/* 프리뷰 이미지 프레임 */
+.preview-image-frame{
+  position:relative;
+  border-radius:12px;
+  overflow:hidden;
+  background:radial-gradient(circle at 50% 0,#1b2335,#05070a);
+  border:1px solid rgba(0,246,255,.25);
+  min-height:250px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.preview-image-frame::before{
+  content:"";
+  position:absolute;
+  inset:-120%;
+  background:conic-gradient(
+    from 210deg,
+    rgba(0,246,255,.5),
+    transparent 35%,
+    transparent 65%,
+    rgba(0,246,255,.5)
+  );
+  opacity:.35;
+  mix-blend-mode:screen;
+  animation:previewGlow 12s linear infinite;
+}
+
+@keyframes previewGlow{
+  to{transform:rotate(360deg);}
+}
+
+#trainPreviewImg{
+  position:relative;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  filter:drop-shadow(0 12px 24px rgba(0,0,0,.9));
+}
+
+/* 프리뷰 텍스트들 */
+.preview-title{
+  font-size:.95rem;
+  font-weight:600;
+  color:#e7f0ff;
+}
+
+.preview-line{
+  font-size:.8rem;
+  color:#9fc5ff;
+}
+
+.preview-meta-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:4px;
+}
+
+.badge-chip{
+  font-size:.7rem;
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(5,12,24,.9);
+  border:1px solid rgba(0,246,255,.35);
+  color:#cceaff;
+}
+
+.badge-chip.secondary{
+  border-color:rgba(255,255,255,.15);
+  color:#b7c3dd;
+}
+
+
+.difficulty-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.diff-label{
+  font-size:.7rem;
+  letter-spacing:-0.02em;
+  opacity:.85;
+}
+
+.diff-gauge{
+  display:flex;
+  gap:2px;
+}
+
+.diff-gauge .cell{
+  width:7px;
+  height:11px;
+  border-radius:3px;
+  background:rgba(255,255,255,.10);
+  box-shadow:0 0 0 rgba(0,0,0,0);
+  opacity:.45;
+  transition:background .18s ease, opacity .18s ease, box-shadow .18s ease, transform .12s ease;
+}
+
+.diff-gauge .cell.active{
+  background:var(--diff-color, #00f6ff);
+  opacity:1;
+  box-shadow:0 0 8px var(--diff-shadow, rgba(0,246,255,.75));
+  transform:translateY(-1px);
+}
+
+/* 조금 더 난이도 높을수록 오른쪽 셀은 살짝 연해지게 하고 싶다면 (선택사항)
+.diff-gauge .cell.active:nth-child(4),
+.diff-gauge .cell.active:nth-child(5){
+  background:#48c9ff;
+} */
+
+.preview-caption{
+  margin-top:8px;
+  font-size:.75rem;
+  color:#8fa2c6;
+  line-height:1.5;
+}
+
+/* 모바일에서는 1열로 정렬 */
+@media(max-width:840px){
+  .overlay-grid{grid-template-columns:1fr;}
+  #overlay .card{
+    max-width:100%;
+    margin:12px;
+  }
+}
 .title{font-size:1.4rem;font-weight:600;margin-bottom:4px;color:#00f6ff}
 .subtitle{font-size:.9rem;color:#9fc5ff;margin-bottom:16px}
 .form-label{display:block;font-size:.85rem;margin-bottom:12px;text-align:left;font-weight:500;color:#cceaff}
@@ -97,13 +285,13 @@ body{overflow-x:hidden;overflow-y:auto}
 /* TASC 토글 – 살짝 아래 */
 .tasc-toggle {
   position: absolute;
-  right: 16px;
+  right: 26px;
   display: flex;
   align-items: center;
   gap: 6px;
   font-family: 'Orbitron', sans-serif;
   z-index: 1001;
-  top: 140px !important; 
+  top: 80px !important; 
 }
 @media (max-width: 768px) {.tasc-toggle {top: 165px;}}
 .tasc-toggle .tasc-label{font-size:12px;font-weight:600;color:#9fc5ff;user-select:none}
@@ -318,7 +506,7 @@ body{overflow-x:hidden;overflow-y:auto}
 .toggle-bar{
   position:absolute;
   right: 110px;
-  top:140px !important; /* 기존 TASC 위치 그대로 */
+  top:80px !important; /* 기존 TASC 위치 그대로 */
   display:flex;
   align-items:center;
   font-size:12px;font-weight:600;color:#9fc5ff;user-select:none;
@@ -469,80 +657,150 @@ body{overflow-x:hidden;overflow-y:auto}
       JR Train Simulator
     </h2>
 
-    <p class="subtitle" id="subtitleIntro">초기값 입력 후 <b>TASC(자동정차)</b> 설정하고 <b>Space</b> 또는 아래 버튼으로 시작하세요. TASC가 활성화된 상태에서도, 운전자는 수동 조작으로 운전에 개입할 수 있습니다.</p>
-<!-- 토글 바: 랜덤 + TASC 나란히 -->
-<div class="toggle-bar">
-  <!-- ✅ 랜덤 토글 (왼쪽) -->
-  <div class="rnd-toggle">
-    <input type="checkbox" id="rndToggle" />
-    <label for="rndToggle" class="slider"></label>
-    <span class="tasc-label" style="font-weight:700">Random</span>
-  </div>
-</div>
+    <p class="subtitle" id="subtitleIntro">
+      초기값 입력 후 <b>TASC(자동정차)</b> 설정하고 <b>Space</b> 또는 아래 버튼으로 시작하세요. TASC가 활성화된 상태에서도, 운전자는 수동 조작으로 운전에 개입할 수 있습니다.
+    </p>
 
-  <!-- 기존 TASC 토글 (오른쪽) -->
-  <div class="tasc-toggle">
-    <input type="checkbox" id="tascToggle" unchecked />
-    <label for="tascToggle" class="slider"></label>
-    <span class="tasc-label" id="labelTASC" style="font-weight:700">TASC</span>
-  </div>
+    <!-- 토글 바: Random / TASC (기존 그대로 사용) -->
+    <div class="toggle-bar">
+      <div class="rnd-toggle">
+        <input type="checkbox" id="rndToggle" />
+        <label for="rndToggle" class="slider"></label>
+        <span class="tasc-label" style="font-weight:700">Random</span>
+      </div>
+    </div>
 
-    <!-- BEGIN PATCH: Overlay - Sync Mode Selector (label 변경만) -->
-<label class="form-label"><span>3D Graphics</span>
-  <select id="syncMode" class="form-input">
-    <option value="on" selected>Enable (PC Recommended)</option>
-    <option value="off" >Disable</option>
-  </select>
-</label>
-<!-- END PATCH -->
+    <div class="tasc-toggle">
+      <input type="checkbox" id="tascToggle" unchecked />
+      <label for="tascToggle" class="slider"></label>
+      <span class="tasc-label" id="labelTASC" style="font-weight:700">TASC</span>
+    </div>
 
-    <!-- 전동차 / 시리즈 -->
-    <label class="form-label"><span id="labelTrain">전동차</span>
-      <select id="trainFamily" class="form-input">
-        <option value="E233" selected>E233계</option>
-        <option value="E235">E235계</option>
-        <!-- <option value="JRW223">223계</option>
-        <option value="JRW225">225계</option>
-        <option value="JRH261">261계</option>
-        <option value="JRW285">285계</option>
-        <option value="JRW323">323계</option>
-        <option value="JR103">103계</option>
-        <option value="EF510">EF510형 전기기관차 + E26계 객차</option>
-        <option value="K3000">케이세이 3000계</option>
-        <option value="T5300">도쿄도 교통국 5300계</option> -->
-        <option value="S3000">서울교통공사 3000호대 VVVF 전동차</option>
-        <option value="N700S">신칸센 N700S계</option> 
-      </select>
-    </label>
-    <label class="form-label"><span id="labelSeries">시리즈</span>
-      <select id="trainSeries" class="form-input"></select>
-    </label>
+    <!-- 👇 좌–우 2열 레이아웃 -->
+    <div class="overlay-grid">
+      <!-- 좌측: 입력 폼 -->
+      <div class="overlay-main">
+        <!-- 3D on/off -->
+        <label class="form-label"><span>3D Graphics</span>
+          <select id="syncMode" class="form-input">
+            <option value="on" selected>Enable (PC Recommended)</option>
+            <option value="off">Disable</option>
+          </select>
+        </label>
 
-    <!-- ✅ 속도/거리 입력 범위 갱신: 속도 40~130, 거리 150~900 -->
-    <label class="form-label"><span id="labelInitSpeed">초기 속도 (km/h)</span>
-      <input id="inputSpeed" type="number" value="60" min="40" max="300" step="1" class="form-input">
-    </label>
-    <label class="form-label"><span id="labelInitDist">거리 (m)</span>
-      <input id="inputDist" type="number" value="250" min="150" max="900" step="1" class="form-input">
-    </label>
-    <label class="form-label"><span id="labelGradeInput">경사도 (‰)</span>
-      <input id="inputGrade" type="number" value="0.0" min="-10" max="10" step="0.1" class="form-input">
-    </label>
+        <!-- 전동차 / 시리즈 -->
+        <label class="form-label"><span id="labelTrain">전동차</span>
+          <select id="trainFamily" class="form-input">
+            <option value="E233" selected>E233계</option>
+            <option value="E235">E235계</option>
+            <option value="S3000">서울교통공사 3000호대 VVVF 전동차</option>
+            <option value="N700S">신칸센 N700S계</option> 
+            <option value="EF510">EF510형 전기기관차 + E26계 객차</option> 
+          </select>
+        </label>
 
-    <label class="form-label"><span id="labelWeather">날씨</span>
-      <select id="weatherSelect" class="form-input">
-        <option value="맑음">맑음</option><option value="눈옴">강설/빙판</option><option value="비옴">우천</option>
-      </select>
-    </label>
-    <label class="form-label"><span id="labelLoadRate">승객 탑승률 (%)</span>
-      <input id="inputLoadRate" type="number" value="70" min="0" max="120" step="1" class="form-input">
-    </label>
+        <label class="form-label"><span id="labelSeries">시리즈</span>
+          <select id="trainSeries" class="form-input"></select>
+        </label>
 
-    <!-- 편성 (시리즈별로만 고정 노출) -->
-    <label class="form-label"><span id="labelTrainLength">편성</span>
-      <select class="form-input" id="trainLength" onchange="updateTrainLength()"></select>
-    </label>
+        <!-- 속도 / 거리 / 경사 -->
+        <label class="form-label"><span id="labelInitSpeed">초기 속도 (km/h)</span>
+          <input id="inputSpeed" type="number" value="60" min="40" max="300" step="1" class="form-input">
+        </label>
 
+        <label class="form-label"><span id="labelInitDist">거리 (m)</span>
+          <input id="inputDist" type="number" value="250" min="150" max="900" step="1" class="form-input">
+        </label>
+
+        <label class="form-label"><span id="labelGradeInput">경사도 (‰)</span>
+          <input id="inputGrade" type="number" value="0.0" min="-10" max="10" step="0.1" class="form-input">
+        </label>
+
+        <!-- 날씨 / 탑승률 -->
+        <label class="form-label"><span id="labelWeather">날씨</span>
+          <select id="weatherSelect" class="form-input">
+            <option value="맑음">맑음</option>
+            <option value="눈옴">강설/빙판</option>
+            <option value="비옴">우천</option>
+          </select>
+        </label>
+
+        <label class="form-label"><span id="labelLoadRate">승객 탑승률 (%)</span>
+          <input id="inputLoadRate" type="number" value="70" min="0" max="120" step="1" class="form-input">
+        </label>
+
+        <!-- 편성 -->
+        <label class="form-label"><span id="labelTrainLength">편성</span>
+          <select class="form-input" id="trainLength" onchange="updateTrainLength()"></select>
+        </label>
+
+        <div class="kbd-info">
+          <span class="kbd">W</span> 제동 체결 · 
+          <span class="kbd">S</span> 제동 완해 · 
+          <span class="kbd">N</span> 중립 기어 · 
+          <span class="kbd">A</span> 6단 상용제동 · 
+          <span class="kbd">B</span> 제동곡선 표시
+        </div>
+
+        <button id="btnStart" class="btn-primary" type="button" style="margin-top:8px">
+          Start (Space)
+        </button>
+      </div>
+
+      <!-- 우측: 열차 프리뷰 패널 -->
+      <aside class="overlay-preview" aria-label="Selected train preview">
+        <div class="preview-image-frame">
+          <!-- 기본 썸네일 (초기값) – JS에서 trainSeries 선택 시 교체 -->
+          <img id="trainPreviewImg" src="/static/photos/e233_1000.png" alt="Train preview">
+        </div>
+
+        <div class="preview-title" id="trainPreviewName">
+          JR EAST E233-1000
+        </div>
+
+        <div class="preview-line" id="trainPreviewLine">
+          게이힌토호쿠선·네기시선
+        </div>
+
+        <div class="preview-meta-row">
+          <!-- 1: 계열 -->
+          <span class="badge-chip" id="trainPreviewFamily">E233계</span>
+
+          <!-- 2: 편성 -->
+          <span class="badge-chip secondary" id="trainPreviewFormation">10량 편성</span>
+
+          <!-- 3: 제동 난이도 -->
+          <span class="badge-chip difficulty-badge" id="brakeDiffBadge">
+            <span class="diff-label">제동 난이도</span>
+            <span class="diff-gauge" id="brakeDiffGauge">
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+            </span>
+          </span>
+
+          <!-- 4: 조작 난이도 -->
+          <span class="badge-chip difficulty-badge secondary" id="ctrlDiffBadge">
+            <span class="diff-label">조작 난이도</span>
+            <span class="diff-gauge" id="ctrlDiffGauge">
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+              <span class="cell"></span>
+            </span>
+          </span>
+        </div>
+
+        <p class="preview-caption" id="trainPreviewCaption">
+          전동차 계열과 시리즈, 편성을 변경하면 이 영역에 해당 열차의 외형 이미지와 노선 정보가 미리보기로 표시됩니다.
+        </p>
+      </aside>
+    </div>
+
+    <!-- 날씨 이펙트 DOM (기존 유지) -->
     <div class="game-background"></div>
     <div class="snowflakes"></div>
     <div class="raindrops">
@@ -552,11 +810,9 @@ body{overflow-x:hidden;overflow-y:auto}
       <div style="animation-delay:1.2s;left:65%"></div><div style="animation-delay:1.4s;left:75%"></div>
       <div style="animation-delay:1.6s;left:85%"></div><div style="animation-delay:1.8s;left:95%"></div>
     </div>
-
-    <div class="kbd-info"><span class="kbd">W</span> 제동 체결 · <span class="kbd">S</span> 제동 완해 · <span class="kbd">N</span> 중립 기어 · <span class="kbd">A</span> 6단 상용제동 · <span class="kbd">B</span> 제동곡선 표시</div>
-    <button id="btnStart" class="btn-primary" type="button" style="margin-top:8px">Start (Space)</button>
   </div>
 </div>
+
 
 
 <!-- 재시작 FAB -->
@@ -755,7 +1011,7 @@ dash.innerHTML = `
 
 
 // --- inst.png를 SVG viewBox로 감싸기: PNG 원본 사이즈를 반드시 맞춰주세요 ---
-const INST_SRC = '/static/inst.png';
+const INST_SRC = '/static/photos/inst.png';
 const INST_SIZE = { width: 7560, height: 1760 }; // inst.png 원본 픽셀 크기
 
 // 텍스트/라더 배치 좌표 (모두 PNG 원본 좌표 기준)
@@ -2686,6 +2942,123 @@ S3000: [{
 
 };
 
+
+// ===== Overlay train preview =====
+const previewImg = document.getElementById('trainPreviewImg');
+const previewName = document.getElementById('trainPreviewName');
+const previewLine = document.getElementById('trainPreviewLine');
+const previewFamily = document.getElementById('trainPreviewFamily');
+const previewFormation = document.getElementById('trainPreviewFormation');
+const previewCaption = document.getElementById('trainPreviewCaption');
+
+// 🔥 난이도 게이지 엘리먼트
+const brakeGaugeEl = document.getElementById('brakeDiffGauge');
+const ctrlGaugeEl = document.getElementById('ctrlDiffGauge');
+
+// 1~5 난이도를 초록→노랑→주황→빨강 그라데이션으로 매핑
+function colorForLevel(level){
+  const clampLevel = Math.max(1, Math.min(5, Number(level) || 1));
+  const t = (clampLevel - 1) / 4; // 0 ~ 1
+
+  // #4cd964(초록) → #ffcc00(노랑) → #ff3b30(빨강)
+  const g = { r: 0x4c, g: 0xd9, b: 0x64 }; // 76,217,100
+  const y = { r: 0xff, g: 0xcc, b: 0x00 }; // 255,204,0
+  const r = { r: 0xff, g: 0x3b, b: 0x30 }; // 255,59,48
+
+  const lerp = (a,b,u)=> a + (b-a)*u;
+
+  let c;
+  if (t <= 0.5){
+    const u = t / 0.5; // 0~1, green → yellow
+    c = {
+      r: lerp(g.r, y.r, u),
+      g: lerp(g.g, y.g, u),
+      b: lerp(g.b, y.b, u)
+    };
+  } else {
+    const u = (t - 0.5) / 0.5; // 0~1, yellow → red
+    c = {
+      r: lerp(y.r, r.r, u),
+      g: lerp(y.g, r.g, u),
+      b: lerp(y.b, r.b, u)
+    };
+  }
+
+  const rInt = Math.round(c.r);
+  const gInt = Math.round(c.g);
+  const bInt = Math.round(c.b);
+
+  return {
+    color: `rgb(${rInt}, ${gInt}, ${bInt})`,
+    shadow: `rgba(${rInt}, ${gInt}, ${bInt}, 0.85)`
+  };
+}
+
+function setDifficultyGauge(gaugeEl, level){
+  if (!gaugeEl) return;
+
+  const cells = gaugeEl.querySelectorAll('.cell');
+  const n = Math.max(1, Math.min(5, Number(level) || 1)); // 1~5 로 클램프
+  const { color, shadow } = colorForLevel(n);
+
+  cells.forEach((cell, idx) => {
+    const active = idx < n;
+    cell.classList.toggle('active', active);
+
+    if (active){
+      // CSS 변수로 색상 전달
+      cell.style.setProperty('--diff-color', color);
+      cell.style.setProperty('--diff-shadow', shadow);
+    } else {
+      cell.style.removeProperty('--diff-color');
+      cell.style.removeProperty('--diff-shadow');
+    }
+  });
+}
+ 
+function updateTrainDifficultyBadges(vehicle){
+  if (!vehicle) return;
+
+  const brake = Number(vehicle.brake_difficulty ?? 0) || 0;
+  const ctrl = Number(vehicle.ctrl_difficulty ?? 0) || 0;
+
+  setDifficultyGauge(brakeGaugeEl, brake || 3); // 값 없으면 기본 3
+  setDifficultyGauge(ctrlGaugeEl, ctrl || 3);
+}
+
+function updateTrainPreview(info){
+  if (!info || !previewImg) return;
+
+  const file = info.file || "";
+  const imgPath = file.endsWith(".json")
+    ? file.replace(".json", ".png")
+    : file; // 혹시 직접 png 경로를 넣고 싶을 때도 대응
+
+  previewImg.src = imgPath;
+  previewImg.alt = info.code || "Train preview";
+
+  if (previewName) previewName.textContent = info.code || "Train series";
+  if (previewLine) previewLine.textContent = info.lines || "";
+  if (previewFamily) previewFamily.textContent = (info.family || "").toString() + "계";
+
+  if (previewFormation) {
+    const lens = Array.isArray(info.lengths) ? info.lengths : [];
+    previewFormation.textContent = lens.length
+      ? lens.map(l => `${l}량 편성`).join(" · ")
+      : "";
+  }
+
+   if (previewCaption) {
+    if (info.description && info.description.trim() !== "") {
+      previewCaption.textContent = info.description;
+    } else {
+      // description 없으면 기존 기본 문구 유지하고 싶으면 이 줄만 주석 처리
+      previewCaption.textContent = "전동차 계열과 시리즈, 편성을 변경하면 이 영역에 해당 열차의 외형 이미지와 노선 정보가 미리보기로 표시됩니다.";
+    }
+  }
+}
+
+
 const trainFamilyEl=document.getElementById('trainFamily');
 const trainSeriesEl=document.getElementById('trainSeries');
 const trainLengthEl=document.getElementById('trainLength');
@@ -2703,6 +3076,8 @@ function setTrainLengthOptions(lengths){
     if (window.__refreshPlatformSignTextures) window.__refreshPlatformSignTextures();
   } catch (e) { /* non-fatal */ }
 }
+
+
 
 
 function loadVehicleFile(filePath){
@@ -2727,6 +3102,25 @@ function loadVehicleFile(filePath){
         }
       } catch (e) { console.debug(e); }
 
+         try {
+        const opt = trainSeriesEl.selectedOptions[0];
+        if (opt) {
+          const lengths = JSON.parse(opt.dataset.lengths || "[]");
+          updateTrainPreview({
+            file: opt.value,
+            code: opt.dataset.code || vehicle.name,
+            lines: opt.dataset.lines || "",
+            family: opt.dataset.family || "",
+            lengths: lengths,
+            description: vehicle.description || "" // 👈 핵심
+          });
+        }
+      } catch (e) {
+        console.debug("preview update failed", e);
+      }
+
+     updateTrainDifficultyBadges(vehicle);
+
       // 아래는 원래 있던 WebSocket 전송, 플랫폼 길이 조정 등 그대로 유지
       if (ws.readyState === WebSocket.OPEN) {
         const justName = filePath.split('/').pop();
@@ -2749,34 +3143,64 @@ function loadVehicleFile(filePath){
 }
 
 
+
 function populateSeries(){
   const fam = trainFamilyEl.value;
   const list = TRAIN_DB[fam] || [];
   trainSeriesEl.innerHTML = "";
-  list.forEach((s,i)=>{
-    const opt=document.createElement('option');
-    opt.value=s.file; opt.dataset.lengths=JSON.stringify(s.lengths);
-    opt.textContent=`${s.code} (${s.lines})`;
-    if(i===0) opt.selected=true;
+
+  list.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = s.file;
+    opt.dataset.lengths = JSON.stringify(s.lengths);
+    opt.dataset.code = s.code;
+    opt.dataset.lines = s.lines;
+    opt.dataset.family = fam;
+    opt.textContent = `${s.code}`;
+    if (i === 0) opt.selected = true;
     trainSeriesEl.appendChild(opt);
   });
 
   if (list[0]) {
-    // 1) UI 옵션만 세팅 (자동 전송 X)
     setTrainLengthOptions(list[0].lengths);
-    // 2) 차량 로드 + 서버 전송 + 이어서 길이/탑승률 전송
+
+    // 🔥 첫 진입 시 우측 프리뷰도 동기화
+    updateTrainPreview({
+      file: list[0].file,
+      code: list[0].code,
+      lines: list[0].lines,
+      family: fam,
+      lengths: list[0].lengths
+    });
+
     loadVehicleFile(list[0].file);
   }
 }
 
+
 trainSeriesEl.addEventListener('change',(e)=>{
-  const opt=e.target.selectedOptions[0];
-  const lengths=JSON.parse(opt.dataset.lengths||"[]");
-  // 1) 길이 옵션만 바꿈 (자동 전송 X)
+  const opt = e.target.selectedOptions[0];
+  if (!opt) return;
+
+  const lengths = JSON.parse(opt.dataset.lengths || "[]");
+
+  // 편성 옵션 갱신
   setTrainLengthOptions(lengths);
-  // 2) 차량 로드 → 서버 전송 → 이어서 길이/탑승률 전송
+
+  // 🔥 우측 프리뷰 갱신
+  updateTrainPreview({
+    file: opt.value,
+    code: opt.dataset.code,
+    lines: opt.dataset.lines,
+    family: opt.dataset.family,
+    lengths: lengths,
+  });
+
+  // 실제 차량 JSON 로드 + 서버 통신
   loadVehicleFile(opt.value);
+
 });
+
 trainFamilyEl.addEventListener('change', populateSeries);
 populateSeries(); // 최초 세팅
 
@@ -2804,7 +3228,7 @@ window.__brakeGuideOn = true;
       labelDown: "완화",
       labelRelease: "해방",
       subtitleIntro: 
-  "B1/B2단으로 제동을 시작해 남은거리 <b>150m</b> (P3 TASC 지상자) 지점까지 속도를 <b>60km/h</b> 이하로 낮추세요. 그 이후에는 <b>TASC(자동정차)</b>가 자동으로 제동을 이어받습니다.",
+  "B1/B2단으로 제동을 시작해 <b>150m</b> P3 지상자 지점까지 속도를 <b>60km/h</b> 이하로 낮추세요. 그 이후에는 <b>TASC(자동정차)</b>가 자동으로 제동을 이어받습니다.",
 
       labelTASC: "TASC",
       labelTrain: "전동차",
