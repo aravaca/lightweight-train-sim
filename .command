@@ -1,5 +1,5 @@
 git add .
-git commit -m "graphic optimization"
+git commit -m "max screen"
 git push origin main
 
 pip install fastapi uvicorn[standard]
