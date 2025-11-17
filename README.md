@@ -7,7 +7,7 @@
 <img width="980" height="265" alt="feedback" src="https://github.com/user-attachments/assets/b523694b-a208-4161-b031-6abb18f66f38" />
 
 A lightweight **web-based railway simulation framework** replicating key control functions of **JR East/West EMUs**.  
-Unlike heavy simulations, PTS is designed for **essential driving skill training** on low-end PCs, as it enables repetitive **braking** and **stop-point accuracy** practice.
+Unlike heavy simulators, PTS is designed for **essential driving skill training** on PCs, as it enables repetitive **braking** and **stop-point accuracy** practice.
 
 Supports:
 - **Manual stop control**  
