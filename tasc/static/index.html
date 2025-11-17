@@ -569,7 +569,7 @@ body {
 .cab-frame.top {
   top: 0;
   /* height: clamp(6%, 9vh, 75px); */
-  height: 85px;
+  height: 75px;
   background:
     linear-gradient(to bottom, rgba(10,14,20,.95), rgba(10,14,20,.76));
   border-bottom: 1px solid rgba(255,255,255,.08);
@@ -579,7 +579,7 @@ body {
 .cab-frame.bottom {
   bottom: 0;
   /* height: clamp(8%, 14vh, 190px); */
-  height: 190px;
+  height: 160px;
   background:
     linear-gradient(to top, rgba(10,14,20,.96), rgba(10,14,20,1));
   border-top: 1px solid rgba(255,255,255,.08);
@@ -1371,7 +1371,7 @@ const scene = new THREE.Scene();
 });
 
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2)); // cap max DPR to 2 for performance
+  renderer.setPixelRatio(1);
   mount.appendChild(renderer.domElement);
   // runtime-adjustable target DPR for the auto-scaler (initialized to current setting)
   let targetDPR = renderer.getPixelRatio();
@@ -1792,7 +1792,8 @@ function createTrackCanvasTexture() {
     const tex = new THREE.CanvasTexture(cvs);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 40);
-    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const MAX_ANISO = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    tex.anisotropy = MAX_ANISO;
     tex.encoding = THREE.sRGBEncoding;
     return tex;
   }
@@ -1819,13 +1820,13 @@ function createTrackCanvasTexture() {
   track2.receiveShadow = false;
   scene.add(track2);
 
-  const track3 = new THREE.Mesh(trackGeo, trackMat);
-  track3.position.set(-6.5, 0.01, 200);
-  track3.rotation.x = -Math.PI/2;
-  track3.position.y = 0.01;
-  track3.position.z = 200;
-  track3.receiveShadow = false;
-  scene.add(track3);
+  // const track3 = new THREE.Mesh(trackGeo, trackMat);
+  // track3.position.set(-6.5, 0.01, 200);
+  // track3.rotation.x = -Math.PI/2;
+  // track3.position.y = 0.01;
+  // track3.position.z = 200;
+  // track3.receiveShadow = false;
+  // scene.add(track3);
 
   // rails (thin metallic extrusions) on top of the track plane for specular highlights and correct shading
   const railMat = new THREE.MeshStandardMaterial({ color:0xe0e5e5, metalness:0.95, roughness:0.28 });
@@ -1847,13 +1848,13 @@ function createTrackCanvasTexture() {
   railR2.castShadow = false; railR2.receiveShadow = false;
   scene.add(railL2, railR2);
 
-  const railL3 = new THREE.Mesh(railGeo, railMat);
-  const railR3 = new THREE.Mesh(railGeo, railMat);
-  railL3.position.set(-0.535-6.5, railH/2 + 0.01, 200);
-  railR3.position.set( 0.535-6.5, railH/2 + 0.01, 200);
-  railL3.castShadow = false; railL3.receiveShadow = false;
-  railR3.castShadow = false; railR3.receiveShadow = false;
-  scene.add(railL3, railR3);
+  // const railL3 = new THREE.Mesh(railGeo, railMat);
+  // const railR3 = new THREE.Mesh(railGeo, railMat);
+  // railL3.position.set(-0.535-6.5, railH/2 + 0.01, 200);
+  // railR3.position.set( 0.535-6.5, railH/2 + 0.01, 200);
+  // railL3.castShadow = false; railL3.receiveShadow = false;
+  // railR3.castShadow = false; railR3.receiveShadow = false;
+  // scene.add(railL3, railR3);
 
 //   // --- 침목(InstancedMesh) ---
 //   const sleeperMat = new THREE.MeshStandardMaterial({
@@ -1884,16 +1885,16 @@ const platMatTop = new THREE.MeshStandardMaterial({ color: 0xd8dbe1, roughness: 
 const platMatEdge = new THREE.MeshStandardMaterial({ color: 0xf0d060, roughness: 0.6, metalness: 0.0 }); // 노란 라인
 
 // 좌측 플랫폼 (높이는 그대로 1.13m로 유지)
-const plat = new THREE.Mesh(new THREE.BoxGeometry(platW, platH, platformLen), platMatTop);
-plat.position.set(+2.4 + 4.9415, platH / 2, platZ - platformLen / 2); // 바닥에서 1.13m로 설정, 높이는 그대로 유지
-plat.receiveShadow = false; plat.castShadow = false;
-scene.add(plat);
+// const plat = new THREE.Mesh(new THREE.BoxGeometry(platW, platH, platformLen), platMatTop);
+// plat.position.set(+2.4 + 4.9415, platH / 2, platZ - platformLen / 2); // 바닥에서 1.13m로 설정, 높이는 그대로 유지
+// plat.receiveShadow = false; plat.castShadow = false;
+// scene.add(plat);
 
-// 좌측 노란 라인
-const platLine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.01, platformLen), platMatEdge);
-platLine.position.set(+1.55 + 4.9415, platH+ 0.01, platZ - platformLen / 2); // 노란 라인 위치도 길이에 맞춰 조정
-platLine.receiveShadow = false; platLine.castShadow = false; 
-scene.add(platLine);
+// // 좌측 노란 라인
+// const platLine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.01, platformLen), platMatEdge);
+// platLine.position.set(+1.55 + 4.9415, platH+ 0.01, platZ - platformLen / 2); // 노란 라인 위치도 길이에 맞춰 조정
+// platLine.receiveShadow = false; platLine.castShadow = false; 
+// scene.add(platLine);
 
 // 우측 플랫폼 (좌측과 동일한 높이와 Y축 길이 유지)
 const platR = new THREE.Mesh(new THREE.BoxGeometry(platW, platH, platformLen), platMatTop);
@@ -1941,13 +1942,16 @@ window.__updatePlatformLength = function(newLen) {
     const startZ = platZ - 2;
     const endZ = platZ - platformLen + 2;
     const spacing = 20.0; // m 사이 간격
+    let pillarIndex = 0;
     for (let z = startZ; z > endZ; z -= spacing){
+      pillarIndex++;
+      if (pillarIndex % 2 !== 0) continue;
       // 왼쪽 기둥
-      const pL = new THREE.Mesh(pillarGeo, pillarMat);
-      pL.position.set(2.7+4, 2.5, z);
+      // const pL = new THREE.Mesh(pillarGeo, pillarMat);
+      // pL.position.set(2.7+4, 2.5, z);
 
-      pL.castShadow = false; pL.receiveShadow = false;
-      scene.add(pL);
+      // pL.castShadow = false; pL.receiveShadow = false;
+      // scene.add(pL);
       // 오른쪽 기둥
       const pR = new THREE.Mesh(pillarGeo, pillarMat);
       pR.position.set(-2.7, 2.5, z);
@@ -1962,18 +1966,18 @@ window.__updatePlatformLength = function(newLen) {
       const lampColor = 0xfff1c4; // 따뜻한 전구색
 
       // 오른쪽 플랫폼(플랫폼 y가 높은 쪽)
-      const lampR = new THREE.PointLight(lampColor, 0, lampRange, 2.0);
-      lampR.position.set(2.2 + 4, lampHeight, z);
-      lampR.castShadow = false;
-      scene.add(lampR);
-      platformLights.push(lampR);
+      // const lampR = new THREE.PointLight(lampColor, 0, lampRange, 2.0);
+      // lampR.position.set(2.2 + 4, lampHeight, z);
+      // lampR.castShadow = false;
+      // scene.add(lampR);
+      // platformLights.push(lampR);
 
       // 왼쪽 플랫폼
-      const lampL = new THREE.PointLight(lampColor, 0, lampRange, 2.0);
-      lampL.position.set(-2.2, lampHeight, z);
-      lampL.castShadow = false;
-      scene.add(lampL);
-      platformLights.push(lampL);
+        const lampL = new THREE.PointLight(lampColor, 0, lampRange, 2.0);
+        lampL.position.set(-2.2, lampHeight, z);
+        lampL.castShadow = false;
+        scene.add(lampL);
+        platformLights.push(lampL);
     }
 
     // long roof spanning the platform
@@ -1983,11 +1987,11 @@ window.__updatePlatformLength = function(newLen) {
     roof.castShadow = false; roof.receiveShadow = false;
     scene.add(roof);
 
-    const roofL = new THREE.Mesh(roofGeo, roofMat);
-    roofL.position.set(6.25, platH + 3.0, platZ - platformLen/2);
-    roofL.rotation.z = THREE.MathUtils.degToRad(-5);   // 5도 기울이기
-    roofL.castShadow = false; roofL.receiveShadow = false;
-    scene.add(roofL);
+    // const roofL = new THREE.Mesh(roofGeo, roofMat);
+    // roofL.position.set(6.25, platH + 3.0, platZ - platformLen/2);
+    // roofL.rotation.z = THREE.MathUtils.degToRad(-5);   // 5도 기울이기
+    // roofL.castShadow = false; roofL.receiveShadow = false;
+    // scene.add(roofL);
   })();
 
 
@@ -2009,7 +2013,7 @@ const ambient = new THREE.AmbientLight(0xffffff, 0.05);
       ambient.intensity = 0.02;
 
       // 헤드라이트 온
-      headlight.intensity = 600.0;
+      headlight.intensity = 1000.0;
     } else {
       scene.background = daySkyTex;
 
@@ -2273,6 +2277,8 @@ camera.lookAt(xOffset, yOffset, zOffset);
   // --- 루프 ---
   let lastRAF = 0;
   function tick(t){
+
+    if (st) drawHUD(st);
     if (modeSel?.value === 'on'){
   // 진행감: 자갈/트랙 텍스처 스크롤(매 프레임 반복수 변경)
   const rem = Number(window.st?.remaining_m ?? 0);
@@ -2819,8 +2825,8 @@ if (Math.abs(toShowInt) <= 2) {
 } 
 
   // 그래프/미니 인디케이터
-  drawHUD(st);
-  drawBrakeLadderMini(st);
+  // drawHUD(st);
+  // drawBrakeLadderMini(st);
   // small cab mini ladder (above cab dash)
   if (typeof drawCabBrakeLadder === 'function') drawCabBrakeLadder(st);
 
