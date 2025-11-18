@@ -653,6 +653,7 @@ body {
 /* ===== Cab mask frames + mini dashboard ===== */
 #cab3d { position: relative; }
 
+
 /* 공통 프레임 레이어 */
 .cab-frame {
   position: absolute;
@@ -731,6 +732,8 @@ body {
   width: 3ch; /* 숫자 3자리 공간 확보 (ch 단위는 글자 폭 기준) */
   text-align: right; /* 숫자 폭 내에서 오른쪽 정렬 */
 }
+
+
 
 /* EB 시 빨강, N/P 시 색상 */
 .cab-notch.eb { color:#ff6b6b; text-shadow:0 0 10px rgba(255,90,90,.35); }
@@ -1540,7 +1543,6 @@ dash.innerHTML = `
 `;
 
 
-
 // --- inst.png를 SVG viewBox로 감싸기: PNG 원본 사이즈를 반드시 맞춰주세요 ---
 const INST_SRC = '/static/photos/inst.png';
 const INST_SIZE = { width: 7560, height: 1760 }; // inst.png 원본 픽셀 크기
@@ -1615,7 +1617,8 @@ function mountInstrumentSVG() {
       INST_MARKERS.speed.y,
       48,
       '0',
-      { 'text-anchor': 'end', 'font-style': 'italic' }
+
+      { 'text-anchor': 'end', 'font-style': 'italic'}
     )
   );
 
