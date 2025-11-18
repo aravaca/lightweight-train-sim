@@ -2506,38 +2506,46 @@ try {
 function playStationMelody() {
   if (!stationMelody) return;
 
-  try {
-    const name = getCurrentTrainName();
-    const lower = (name || "").toLowerCase();
+try {
+  const name = getCurrentTrainName();
+  const lower = (name || "").toLowerCase();
 
-    // 서울
-    const isSeoulTrain =
-      name.includes("서울") || lower.includes("seoul");
+  // 서울
+  const isSeoulTrain =
+    name.includes("서울") || lower.includes("seoul");
 
-    // KTX
-    const isKtxTrain =
-      name.includes("KTX") ||
-      lower.includes("ktx") ||
-      name.includes("케이티엑스");
+  // KTX
+  const isKtxTrain =
+    name.includes("KTX") ||
+    lower.includes("ktx") ||
+    name.includes("케이티엑스");
 
-    // 도쿄 (기본값)
-    const isTokyoTrain = !isSeoulTrain && !isKtxTrain;
+  // N700S (독립)
+  const isN700sTrain =
+    name.includes("N700S") || lower.includes("n700s");
 
-    // variantKey 결정
-    let variantKey;
-    if (isSeoulTrain) variantKey = "seoul";
-    else if (isKtxTrain) variantKey = "ktx";
-    else variantKey = "tokyo";
+  // 도쿄(기본값)
+  const isTokyoTrain =
+    !isSeoulTrain && !isKtxTrain && !isN700sTrain;
 
-    // 오디오 파일 결정
-    let desiredSrc;
-    if (isSeoulTrain) {
-      desiredSrc = "/static/audio/nambu.mp3";
-    } else if (isKtxTrain) {
-      desiredSrc = "/static/audio/seoul.mp3"; // ← 여기에 원하는 KTX 음원 경로
-    } else {
-      desiredSrc = "/static/audio/tokyo.mp3";
-    }
+  // variantKey 결정
+  let variantKey;
+  if (isSeoulTrain) variantKey = "seoul";
+  else if (isKtxTrain) variantKey = "ktx";
+  else if (isN700sTrain) variantKey = "n700s";
+  else variantKey = "tokyo";
+
+  // 오디오 파일 결정
+  let desiredSrc;
+  if (isSeoulTrain) {
+    desiredSrc = "/static/audio/nambu.mp3";
+  } else if (isKtxTrain) {
+    desiredSrc = "/static/audio/seoul.mp3";
+  } else if (isN700sTrain) {
+    desiredSrc = "/static/audio/shinosaka.mp3"; // ← N700S 전용 음원
+  } else {
+    desiredSrc = "/static/audio/tokyo.mp3";
+  }
 
     // 필요할 때만 src 변경 (불필요한 재로딩 방지)
     if (stationMelody._variantKey !== variantKey) {
