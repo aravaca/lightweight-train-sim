@@ -732,7 +732,7 @@ class StoppingSim:
             idx = max(0, min(idx, n_forward - 1))
 
             x = (idx + 1) / n_forward # 0~1 사이
-            gamma = 0.01 # 1보다 작으면 저단을 더 강하게 
+            gamma = 0.1 # 1보다 작으면 저단을 더 강하게 
 
             # 고속열차(KTX/신칸센 등)에서만 적용하고 싶으면 조건 추가
             if self.veh.maxSpeed_kmh >= 200: # 예: 200km/h 이상이면 고속열차 취급
