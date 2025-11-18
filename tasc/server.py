@@ -718,7 +718,7 @@ class StoppingSim:
         - 없으면 예전 방식(노치별 고정 a + 속도 fade)으로 fallback
         """
         # 전진 노치가 아니면(=제동 또는 N) 가속 없음
-        if lever_notch >= 0 or v <= 0.0:
+        if lever_notch >= 0:
             return 0.0
 
         # ------------------------
@@ -731,8 +731,14 @@ class StoppingSim:
             idx = -lever_notch - 1
             idx = max(0, min(idx, n_forward - 1))
 
-            # 노치별 출력 비율 (1/N, 2/N, ..., N/N)
-            notch_ratio = (idx + 1) / n_forward
+            x = (idx + 1) / n_forward # 0~1 사이
+            gamma = 0.01 # 1보다 작으면 저단을 더 강하게 
+
+            # 고속열차(KTX/신칸센 등)에서만 적용하고 싶으면 조건 추가
+            if self.veh.maxSpeed_kmh >= 200: # 예: 200km/h 이상이면 고속열차 취급
+                notch_ratio = x ** gamma
+            else:
+                notch_ratio = x
 
             # 단위 변환
             P_max_W = self.veh.P_max_kW * 1000.0 # kW → W
@@ -752,6 +758,15 @@ class StoppingSim:
 
             # 순수 "동력" 가속도 (저항/구배는 step()에서 따로 빠짐)
             a_pwr = F_trac / self.veh.mass_kg # [m/s²]
+            
+            # v_kmh = v * 3.6
+            # if v_kmh < 3.0: # 거의 정지 상태
+            #     idx = -lever_notch - 1 # P1=0, P2=1 ...
+            #     if idx == 0: # P1일 때만 (원하면 P2까지 포함 가능)
+            #         min_start_accel = 0.03 # m/s² 정도 (아주 느리게 출발)
+            #         if a_pwr < min_start_accel:
+            #             a_pwr = min_start_accel
+
 
             # a_max가 정의돼 있으면 상한으로 사용 (안전장치)
             if self.veh.a_max > 0:
@@ -1088,26 +1103,17 @@ class StoppingSim:
 
         a_target = pwr_accel + a_brake + a_grade + a_davis
 
+
+        if st.lever_notch < 0 and st.v * 3.6 < 0.5:
+        # 고속/중량 차량에서도 체감되는 출발 가속도 (튜닝 포인트)
+            min_start_accel = 0.15 # m/s² 정도 추천 (0.1~0.2 사이에서 조절)
+
+            if a_target < min_start_accel:
+                a_target = min_start_accel
+
+
         rem_now = self.scn.L - st.s
         v_kmh = st.v * 3.6
-        # --- 속도 기반 소프트 스톱 ---
-        # if v_kmh <= soft_stop_di and st.lever_notch > 0:
-        #     alpha = max(0.0, min(1.0, v_kmh / soft_stop_di))     # 5km/h→1, 0km/h→0
-        #     # -0.08
-        #     a_soft = (-0.30) * alpha + (soft_stop_const) * (1.0 - alpha)
-        #     w_soft = 1.0 - alpha                         # 속도가 낮을수록 소프트 비중↑
-        #     a_target = (1.0 - w_soft) * a_target + w_soft * a_soft
-        
-        ### NEW NEW NEW 
-        # if st.lever_notch >= 1:
-        #     a_target = min(a_target, 0.0)
-
-        # # 저속(<=10 km/h)일 때 tau_brk를 2배로 사용하여 공기제동 밸브 지연을 반영
-        # v_kmh = st.v * 3.6
-        # effective_tau_brk = self.veh.tau_brk * 1.5 if v_kmh <= air_brake_vi else self.veh.tau_brk
-
-        # self._a_cmd_filt += (a_target - self._a_cmd_filt) * (dt / max(1e-6, effective_tau_brk))
-        ### NEW NEW NEW 
 
         if st.lever_notch >= 1:
             a_target = min(a_target, 0.0)
@@ -1115,7 +1121,7 @@ class StoppingSim:
         self._a_cmd_filt += (a_target - self._a_cmd_filt) * (dt / max(1e-6, self.veh.tau_brk))        
 
         max_da = self.veh.j_max * dt
-        if v_kmh <= 5.0:
+        if v_kmh <= 5.0 and st.lever_notch >= 1:
             scale = 0.25 + 0.75 * (v_kmh / 5.0)
             max_da *= scale
 
@@ -1132,7 +1138,7 @@ class StoppingSim:
 
         # ---------- Finish ----------
         rem = self.scn.L - st.s
-        if not st.finished and (rem <= -5.0 or st.v <= 0.0):
+        if not st.finished and (rem <= -5.0 or (rem <= 1.0 and st.v <= 0.0)):
             st.finished = True
             st.stop_error_m = self.scn.L - st.s
             st.residual_speed_kmh = st.v * 3.6
