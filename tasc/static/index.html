@@ -1628,12 +1628,12 @@ overlay.appendChild(svg);
   // 🔽 KTX / N700S 제외하고 mini brake ladder를 SVG로 고정
   // ----------------------------------------------------
   if (layoutKey !== "ktx" && layoutKey !== "n700s") {
-    // 기존에 있던 ladder 관련 글로벌 함수 초기화
+    // 혹시 예전 캔버스 버전이 남아있다면 비활성화
     window.drawMiniBrakeLadder = undefined;
 
-    // SVG 안에 그릴 영역 설정 (cab 해상도 기준 좌표)
-    const ladderX = CAB_W - 1640; // 우측에서 살짝 안쪽
-    const ladderY = CAB_H - 203; // 아래에서 좀 위
+    // cab 원본 좌표 기준 자리 잡기 (적당히 조정 가능)
+    const ladderX = CAB_W - 1640; // 오른쪽에서 살짝 안쪽
+    const ladderY = CAB_H - 203; // 아래에서 조금 위
     const ladderW = 34;
     const ladderH = 155;
 
@@ -1646,15 +1646,14 @@ overlay.appendChild(svg);
     bg.setAttribute("rx", "4");
     bg.setAttribute("ry", "4");
     bg.setAttribute("fill", "rgba(0,0,0,0.40)");
-    bg.setAttribute("stroke-width", "1.5");
     svg.appendChild(bg);
 
-    // 브레이크 블럭을 담을 그룹
+    // 블록/텍스트 그룹
     const ladderGroup = document.createElementNS(svgNS, "g");
     ladderGroup.setAttribute("id", "miniLadderSvg");
     svg.appendChild(ladderGroup);
 
-    // vehicle 정보를 이용해서 notch 갯수 계산
+    // notch 개수 계산
     const accArr = (window.vehicle && Array.isArray(window.vehicle.notch_accels))
       ? window.vehicle.notch_accels
       : null;
@@ -1664,7 +1663,7 @@ overlay.appendChild(svg);
           ? window.vehicle.notches
           : 10);
 
-    const ebIdx = Math.max(1, notches - 1); // EB index
+    const ebIdx = Math.max(1, vehicle.notches - 1); // EB 인덱스
     const blocks = ebIdx;
 
     const pad = 4;
@@ -1673,9 +1672,12 @@ overlay.appendChild(svg);
     const bW = ladderW - pad * 2;
     const x = ladderX + pad;
 
-    const normalBlocks = []; // B1 ~ B(EB-1)
-    let ebBlock = null; // EB 블럭
+    const normalBlocks = []; // B1~B(EB-1) 사각형
+    const normalTexts = []; // 그 위에 올라갈 숫자 텍스트
+    let ebBlock = null; // EB 사각형
+    let ebText = null; // EB 텍스트
 
+    // --- B1 ~ B(EB-1) ---
     for (let k = 1; k <= ebIdx - 1; k++) {
       const i = k - 1;
       const y = ladderY + ladderH - pad - (i + 1) * bH - i * gap;
@@ -1688,12 +1690,26 @@ overlay.appendChild(svg);
       rect.setAttribute("fill", "rgba(60,80,100,0.35)");
       rect.setAttribute("stroke", "rgba(20,30,45,0.6)");
       rect.setAttribute("stroke-width", "1");
-      rect.dataset.notch = String(k); // B1,B2,... 표시용
+      rect.dataset.notch = String(k);
       ladderGroup.appendChild(rect);
       normalBlocks.push(rect);
+
+      // 가운데 숫자 텍스트 (처음엔 비워둠)
+      const txt = document.createElementNS(svgNS, "text");
+      txt.setAttribute("x", x + bW / 2);
+      txt.setAttribute("y", y + bH / 2 + 0.5); // 살짝 아래로
+      txt.setAttribute("text-anchor", "middle");
+      txt.setAttribute("dominant-baseline", "middle");
+      txt.setAttribute("font-family", "A-OTF Shin Go Pro, system-ui, sans-serif");
+      txt.setAttribute("font-size", String(bH * 0.8));
+      txt.setAttribute("font-weight", "700");
+      txt.setAttribute("fill", "#000000");
+      txt.setAttribute("opacity", "0"); // 기본은 안 보이게
+      ladderGroup.appendChild(txt);
+      normalTexts.push(txt);
     }
 
-    // EB 블럭 (맨 위)
+    // --- EB 블록 ---
     {
       const i = ebIdx - 1;
       const yEB = ladderY + ladderH - pad - (i + 1) * bH - i * gap;
@@ -1709,31 +1725,72 @@ overlay.appendChild(svg);
       rectEB.dataset.notch = "EB";
       ladderGroup.appendChild(rectEB);
       ebBlock = rectEB;
+
+      const tEB = document.createElementNS(svgNS, "text");
+      tEB.setAttribute("x", x + bW / 2);
+      tEB.setAttribute("y", yEB + bH / 2 + 0.5);
+      tEB.setAttribute("text-anchor", "middle");
+      tEB.setAttribute("dominant-baseline", "middle");
+      tEB.setAttribute("font-family", "A-OTF Shin Go Pro, system-ui, sans-serif");
+      tEB.setAttribute("font-size", String(bH * 0.8));
+      tEB.setAttribute("font-weight", "700");
+      tEB.setAttribute("fill", "#000000");
+      tEB.setAttribute("opacity", "0");
+      ladderGroup.appendChild(tEB);
+      ebText = tEB;
     }
 
-    // 🔥 상태에 따라 색깔만 바꿔주는 함수 (ws.onmessage에서 호출)
+    // 🔥 상태에 따라 색/텍스트 갱신하는 함수
     window.updateInstrumentLadder = function(st) {
       if (!st) return;
       const cur = Math.max(0, Math.min(ebIdx, st.lever_notch | 0));
 
-      // 기본색
+      // 1) 전체 초기화: 다 회색, 텍스트 숨김
       normalBlocks.forEach((rect, idx) => {
-        const k = idx + 1;
-        let fill = "rgba(60,80,100,0.35)";
-
-        // EB가 아니고, 현재 notch보다 작거나 같으면 노랑
-        if (cur !== ebIdx && k <= cur) {
-          fill = "#ffd34d";
-        }
-        rect.setAttribute("fill", fill);
+        rect.setAttribute("fill", "rgba(60,80,100,0.35)");
+        rect.setAttribute("stroke", "rgba(20,30,45,0.6)");
+        const txt = normalTexts[idx];
+        txt.textContent = "";
+        txt.setAttribute("opacity", "0");
       });
 
-      if (ebBlock) {
-        let ebFill = "rgba(60,80,100,0.35)";
-        if (cur === ebIdx) {
-          ebFill = "#ff5757"; // EB일 때 빨강
+      if (ebBlock && ebText) {
+        ebBlock.setAttribute("fill", "rgba(60,80,100,0.35)");
+        ebBlock.setAttribute("stroke", "rgba(20,30,45,0.6)");
+        ebText.textContent = "";
+        ebText.setAttribute("opacity", "0");
+      }
+
+      // 2) 레버 상태에 따라 다시 칠하기
+      // - cur == 0 or 음수(역행) => 그냥 회색 유지
+      // - 1..EB-1: 아래는 노란색, 맨 위 칸에만 숫자 표시
+      // - EB: EB 칸 빨간색 + "EB" 텍스트
+      if (cur > 0 && cur < ebIdx) {
+        // 서비스 브레이크 구간
+        for (let k = 1; k <= ebIdx - 1; k++) {
+          const idx = k - 1;
+          const rect = normalBlocks[idx];
+          // cur 이하 칸은 노란색
+          if (k <= cur) {
+            rect.setAttribute("fill", "#ffd34d");
+            rect.setAttribute("stroke", "rgba(110,80,10,0.85)");
+          }
+          // 가장 위 칸(k === cur)에만 숫자 텍스트
+          const txt = normalTexts[idx];
+          if (k === cur) {
+            txt.textContent = String(cur);
+            txt.setAttribute("opacity", "1");
+          } else {
+            txt.textContent = "";
+            txt.setAttribute("opacity", "0");
+          }
         }
-        ebBlock.setAttribute("fill", ebFill);
+      } else if (cur === ebIdx && ebBlock && ebText) {
+        // EB
+        ebBlock.setAttribute("fill", "#ff5757");
+        ebBlock.setAttribute("stroke", "#9b0000");
+        ebText.textContent = "EB";
+        ebText.setAttribute("opacity", "1");
       }
     };
   }
