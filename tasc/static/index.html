@@ -1113,7 +1113,7 @@ body {
       <div class="rnd-toggle">
         <input type="checkbox" id="rndToggle" />
         <label for="rndToggle" class="slider"></label>
-        <span class="tasc-label" style="font-weight:700">RANDOM</span>
+        <span class="tasc-label" style="font-weight:700">RANDOM (EMERGENCY RESPONSE TRAINING)</span>
       </div>
     </div>
 
@@ -1893,6 +1893,149 @@ let frames = 0;
 
   // --- 텍스처 로더 ---
   const texLoader = new THREE.TextureLoader();
+
+// =======================
+// 👤 사람 텍스처 여러 개 로딩
+// =======================
+const personTextureFiles = [
+  "/static/textures/person01.png",
+  "/static/textures/1000010896.png",
+  "/static/textures/1000010897.png",
+  "/static/textures/1000010898.png",
+  "/static/textures/1000010899.png",
+  "/static/textures/1000010900.png",
+  "/static/textures/1000010901.png",
+  "/static/textures/1000010902.png",
+  "/static/textures/1000010903.png",
+  "/static/textures/1000010904.png",
+  "/static/textures/1000010905.png",
+  "/static/textures/1000010907.png",
+  "/static/textures/1000010908.png",
+  "/static/textures/1000010912.png",
+  "/static/textures/1000010914.png",
+  "/static/textures/1000010917.png",
+  "/static/textures/1000010918.png",
+  "/static/textures/1000010911.png",
+];
+
+
+// PNG → Texture
+const personTextures = personTextureFiles.map(path => {
+  const tex = texLoader.load(path);
+  tex.colorSpace = THREE.SRGBColorSpace; // three r160 기준
+  tex.transparent = true;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  return tex;
+});
+
+// Texture → Material
+const personMaterials = personTextures.map(tex => new THREE.MeshBasicMaterial({
+  map: tex,
+  transparent: true,
+  depthWrite: false, // 플랫폼 뒤랑 잘 섞이게
+  side: THREE.DoubleSide // 혹시 뒷면만 보이는 상황 방지
+}));
+
+
+
+// 사람 한 명 기준 높이(1.7m)짜리 Plane
+const personHeight = 1.7;
+const personWidth = 0.45; // 비율은 PNG에 맞게 조정
+const personGeo = new THREE.PlaneGeometry(personWidth, personHeight);
+
+// --- 비상 장애물(바위/불) 관리용 --- 
+let emergencyObstacle = null; // 메쉬(바위 또는 불)
+let emergencyObstacleLight = null; // 불일 때만 쓰는 포인트 라이트
+
+// 필요하면 텍스처 사용 (없으면 일단 주석만 두고 단색으로도 가능)
+const fireTex = texLoader.load("/static/textures/fall.png");
+fireTex.colorSpace = THREE.SRGBColorSpace;  // 최신 three.js 방식
+fireTex.transparent = true;
+
+function clearEmergencyObstacle() {
+  if (emergencyObstacle) {
+    scene.remove(emergencyObstacle);
+    // geometry만 정리 (material은 재사용 가능하면 안지워도 됨)
+    if (emergencyObstacle.geometry) emergencyObstacle.geometry.dispose();
+    emergencyObstacle = null;
+  }
+  if (emergencyObstacleLight) {
+    scene.remove(emergencyObstacleLight);
+    emergencyObstacleLight = null;
+  }
+}
+
+/**
+ * 초기 남은거리(initialDist) 기준으로
+ * - 10% 확률로
+ * - 20m ~ initialDist 사이 어딘가에
+ * - 바위 or 불 텍스처 장애물을 생성
+ */
+function maybeSpawnEmergencyObstacle(initialDist) {
+  clearEmergencyObstacle();
+
+  // 조건 부족하면 생성 안 함
+  if (!initialDist || initialDist <= 20) return;
+
+  // 10% 확률
+  if (Math.random() > 0.30) return;
+
+// 20m ~ 100m 사이 범위에서만 장애물 생성
+const minRange = 150;
+const maxRange = 250;
+
+// 실제 가능한 최대 거리 (초기 남은거리보다 클 수 없음)
+const usableMax = Math.min(initialDist, maxRange);
+
+// 20m ~ usableMax 범위가 제대로 확보되지 않았다면 생성 안 함
+if (usableMax <= minRange) return;
+
+const hazardDist = minRange + Math.random() * (usableMax - minRange);
+
+// z 좌표 변환
+const zWorld = 200 - hazardDist;
+const xTrack = 0; // 주행 선로 중앙 (카메라 x=0.9 근처라 잘 보임)
+
+// 텍스처 경로 배열
+const texturePaths = [
+  "/static/textures/fall.png",
+  "/static/textures/fall_woman.png",
+  "/static/textures/rock.png",
+  "/static/textures/fire.png"
+];
+
+// 랜덤 선택
+const randomPath = texturePaths[Math.floor(Math.random() * texturePaths.length)];
+
+// 로드
+const fireTex = texLoader.load(randomPath);
+
+
+
+    // 불 텍스처 (카메라를 향하는 판자 + 포인트 라이트)
+    const geo = new THREE.PlaneGeometry(1.7, 1.7);
+    const mat = new THREE.MeshBasicMaterial({
+      map: fireTex,
+      transparent: true,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    // -1 ~ +1 사이 랜덤 오프셋
+const offset = (Math.random() * 2 - 1);  
+
+mesh.position.set(xTrack + offset, 0.9, zWorld);
+
+    mesh.userData.type = "fire";
+    mesh.userData.billboard = true; // 렌더 루프에서 카메라 쪽을 보게 쓰는 플래그
+    emergencyObstacle = mesh;
+    scene.add(mesh);  
+}
+
+// startRun()에서 호출할 수 있도록 전역에 노출
+window.maybeSpawnEmergencyObstacle = maybeSpawnEmergencyObstacle;
+window.clearEmergencyObstacle = clearEmergencyObstacle;
+
 // --- 지반(콘크리트 단색) ---
 const groundMat = new THREE.MeshStandardMaterial({
   color: 0x8d8d8d,   // 밝은 회색 (콘크리트 느낌)
@@ -2083,6 +2226,8 @@ window.__updatePlatformLength = function(newLen) {
     platLineR.geometry = new THREE.BoxGeometry(0.2, 0.01, newLen);
     platLineR.position.set(-2.0915, platH + 0.01, platZ - newLen / 2);
 
+    // spawnPeopleOnPlatform(50);
+
   } catch(e) { /* non-fatal */ }
 };
   // --- 플랫폼 기둥 및 지붕 추가 (간단한 구조로 분위기 향상) ---
@@ -2145,6 +2290,47 @@ window.__updatePlatformLength = function(newLen) {
     // roofL.rotation.z = THREE.MathUtils.degToRad(-5);   // 5도 기울이기
     // roofL.castShadow = false; roofL.receiveShadow = false;
     // scene.add(roofL);
+
+    const peopleGroup = new THREE.Group();
+scene.add(peopleGroup);
+
+function spawnPeopleOnPlatform(count) {
+  // 기존 사람들 제거
+  while (peopleGroup.children.length) {
+    const child = peopleGroup.children.pop();
+    if (child.geometry) child.geometry.dispose();
+    // material은 재사용 중이면 dispose하지 말고 그대로 둬도 됨
+  }
+
+  for (let i = 0; i < count; i++) {
+
+      const mat = personMaterials[Math.floor(Math.random() * personMaterials.length)];
+const mesh = new THREE.Mesh(personGeo, mat);
+
+    // z: 플랫폼 전체 길이 안에서 랜덤
+    const z = platZ - (Math.random() * (platformLen - 10));
+
+    // x: 노란 선에서 조금 뒤쪽
+    // 오른쪽 플랫폼 기준 (지금 열차가 오른쪽에 붙어있으니까)
+    const min = -3.5;
+const max = -2.5;
+
+// Math.random() → 0 이상 1 미만
+const x = Math.random() * (max - min) + min; // 필요하면 살짝 조정
+
+    const y = platH + personHeight / 2; // 발은 플랫폼 위에 닿게
+
+    mesh.position.set(x, y, z);
+
+    // 처음에는 카메라 쪽을 보게
+    mesh.lookAt(camera.position.x, y, camera.position.z);
+
+    peopleGroup.add(mesh);
+  }
+}
+
+// 처음 한 번 사람 15명 정도
+spawnPeopleOnPlatform(30);
   })();
 
 
@@ -2486,13 +2672,26 @@ camera.lookAt(xOffset, yOffset, zOffset);
               }
             }
           }catch(e){ /* non-fatal */ }
+        
+       // 🔥 비상 장애물 중 불 타입은 항상 카메라를 바라보게
+    if (emergencyObstacle && emergencyObstacle.userData && emergencyObstacle.userData.billboard) {
+      emergencyObstacle.lookAt(
+        camera.position.x,
+        emergencyObstacle.position.y,
+        camera.position.z
+      );
+    }
+    // 사람 billboard 처리
+
 
       renderer.render(scene, camera);
       // lightweight DPR autoscaler: periodically adjust renderer pixel ratio based on observed FPS
       // try { autoScaleDPR(); } catch (e) { /* non-fatal */ }
     }
+
     requestAnimationFrame(tick);
   }
+  
   requestAnimationFrame(tick);
 })();
 
@@ -2782,12 +2981,12 @@ function pickWeather(){
 /** 입력칸을 무작위로 채우고 change 이벤트를 발생시켜 UI/검증을 동기화 */
 function randomizeInputs(){
   // 1) 속도
-  const v = randInt(40, 120);
+  const v = randInt(60, 120);
   inputSpeed.value = String(v);
 
   // 2) 거리: 속도별 최소거리 규칙 준수 (기존 함수 재사용)
-  const minD = Math.max(150, minDistForSpeed(v));
-  const d = randInt(minD, 900);
+  const minD = Math.max(500, minDistForSpeed(v));
+  const d = randInt(minD, 600);
   inputDist.value = String(d);
 
   // 3) 구배(‰)
@@ -2848,6 +3047,14 @@ function startRun(){
         dist=Number(inputDist.value),
         grade=Number(inputGrade.value),
         mu=muFromWeather(weatherSelect.value);
+
+        // 🔥 랜덤 모드에서만 10% 확률로 비상 장애물 생성
+  if (rndEl && rndEl.checked && window.maybeSpawnEmergencyObstacle) {
+    window.maybeSpawnEmergencyObstacle(dist);
+  } else if (window.clearEmergencyObstacle) {
+    // 랜덤 토글 꺼져 있을 땐 이전 장애물 제거
+    window.clearEmergencyObstacle();
+  }
 
   if(ws.readyState===WebSocket.OPEN){
 const enabled = document.getElementById("tascToggle").checked;
