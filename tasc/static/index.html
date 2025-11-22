@@ -2480,7 +2480,7 @@ scene.add(ambient);
 // })();
 
   // === Red signs on platform every 50m up to 200m + 300 + 400 ===
-const signDistances = [0, 50, 100, 150, 200, 300, 400, 500]; // m 단위 거리
+const signDistances = [0]; // m 단위 거리
 
 // 기둥(폴)과 보드(판넬) 재질/형상
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.6, metalness: 0.2 });
@@ -2652,7 +2652,7 @@ const z = 200 - rem;
 
 const angle = (lowerName.includes('ktx') || lowerName.includes('999'))
   ? 0.5
-  : (lowerName.includes('n700s'))
+  : (lowerName.includes('n700s') || lowerName.includes('e26'))
     ? 0.6
     : 0.8; //the rest
 
@@ -4258,7 +4258,8 @@ window.__brakeGuideOn = true;
             "팁: A키는 6단(혹은 5단) 제동, D키는 B1 제동, E키는 비상제동을 발동시킵니다.",
             "팁: Q키는 최대 상용 가속을 발동시킵니다.",
             "팁: 정차 직전 마스콘을 풀었다 다시 조작하는 일명 \"톱질\" 행위는 승차감을 크게 저하시킵니다.",
-            "팁: 정차 도중 역행(재가속) 취급은 절대 금물입니다."
+            "팁: 정차 도중 역행(재가속) 취급은 절대 금물입니다.",
+            "팁: 랜덤 토글을 켜면 30% 확률로 선로 위에 장애물이 나타납니다. 주행 시 항상 주의를 기울이세요."
           ];
 
           return tips[Math.floor(Math.random() * tips.length)];
@@ -4314,8 +4315,8 @@ window.__brakeGuideOn = true;
       "Tip: Press Q for maximum acceleration.",
       "Tip: Check the remaining distance and stop gently with B1/B2 to ensure a smooth ride.",
       "Tip: Reapplying and releasing the master controller just before stopping can severely affect ride comfort.",
-      "Tip: Never consider re-acceleration while bringing the train to a stop."
-
+      "Tip: Never consider re-acceleration while bringing the train to a stop.",
+      "Tip: Enabling the Random toggle introduces a 30% chance of obstacles appearing on the track. Stay alert while driving."
     ];
 
     return tips[Math.floor(Math.random() * tips.length)];

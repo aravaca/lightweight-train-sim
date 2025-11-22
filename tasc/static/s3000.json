@@ -7,7 +7,7 @@
   "notch_accels": [ -1.25, -0.970, -0.907, -0.805, -0.678, -0.534, -0.373, -0.200, 0.00 ],
 "maxSpeed_kmh": 100,
 "forward_notches": 4,
-"forward_notch_accels":[ 0.450, 0.578, 0.705, 0.833 ],
+"forward_notch_accels":[ 0.350, 0.511, 0.672, 0.833 ],
   "tau_cmd_ms": 150,
   "tau_brk_ms": 300,
     "brake_difficulty": 3,
