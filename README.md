@@ -9,7 +9,7 @@
 <img width="1505" height="762" alt="e2" src="https://github.com/user-attachments/assets/7945a09f-268a-4e84-ba7d-4f621925b3e5" />
 <img width="980" height="265" alt="feedback" src="https://github.com/user-attachments/assets/b523694b-a208-4161-b031-6abb18f66f38" />
 
-A lightweight **web-based railway simulation framework** replicating key control functions of **JR East/West EMUs**.  
+A lightweight **web-based railway simulation framework** replicating key control functions of **JR East/West and Korean EMUs**.  
 Unlike heavy simulators, PTS is designed for **essential driving skill training** on PCs, as it enables repetitive **braking** and **stop-point accuracy** practice.
 
 Supports:
@@ -30,7 +30,7 @@ By replicating authentic **EMU physics**, it enables:
 
 ## ⚙️ Tech Stack
 - **Backend**: Python (FastAPI, WebSocket)
-- **Frontend**: HTML, CSS, JavaScript (Three.js for BVE1-style graphics)
+- **Frontend**: HTML, CSS, JavaScript (Three.js for BVE-style graphics)
 - **Deployment**: AWS EC2 (Amazon Linux), Nginx, Route53, 내도메인.한국
 
 ---
