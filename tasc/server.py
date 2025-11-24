@@ -220,7 +220,7 @@ class StoppingSim:
 
         # EB 사용 여부
         self.eb_used = False
-
+        self.run_over = False
         # 저크 계산
         self.prev_a = 0.0
         self.jerk_history: List[float] = []
@@ -1171,7 +1171,7 @@ class StoppingSim:
             score = 0
             st.issues = {}
 
-            if self.eb_used or self.eb_used_from_history():
+            if self.eb_used:
                 score -= 500
                 st.issues["unnecessary_eb_usage"] = True
 
@@ -1237,6 +1237,9 @@ class StoppingSim:
                     st.issues["timeout_overrun_s"] = over_s
                     st.issues["timeout_penalty"] = int(overtime_pen)
                 # 남은 시간이 양수(조기 도착)인 경우는 보너스/페널티 없음
+
+            if self.run_over: #안전 위반에 대한 강력한 패널티
+                score -= 1000
 
             minq = 300
             maxq = 1700
@@ -1567,6 +1570,13 @@ async def ws_endpoint(ws: WebSocket):
                         sim.tasc_active = False
                     if DEBUG:
                         print(f"TASC set to {enabled}")
+
+                elif name == "obstacleStopSuccess":
+                    sim.eb_used = False
+                    sim.first_brake_done = True
+                elif name == "obstacleStopFail":
+                    sim.run_over = True
+
 
                 elif name == "setMu":
                     value = float(payload.get("value", 1.0))

@@ -1275,7 +1275,8 @@ let hazardInfo = {
   active: false, // 이번 런에서 장애물 존재 여부
   dist: null, // 장애물 위치 (remaining_m 기준)
   handled: false, // 성공/실패 이벤트 이미 처리했는지
-  timeoutId: null // 5초 후 제거 타이머
+  timeoutId: null, // 5초 후 제거 타이머
+  success: false // 장애물 앞 정상 정지 여부
 };
 
 // 팝업 DOM 캐시
@@ -1317,7 +1318,7 @@ function hideObstaclePopups() {
   if (obstacleFailPopup) obstacleFailPopup.classList.remove("visible");
   if (obstacleSuccessPopup) obstacleSuccessPopup.classList.remove("visible");
 
-  // ✅ 이 시점에서 이번 장애물 시나리오는 완전히 끝난 것으로 간주
+  //  이 시점에서 이번 장애물 시나리오는 완전히 끝난 것으로 간주
   if (window.hazardInfo) {
     hazardInfo.handled = true; // 다시는 같은 장애물로 이벤트 안 뜸
     hazardInfo.active = false;
@@ -1337,10 +1338,26 @@ function hideObstaclePopups() {
 
 function showObstacleWarning() {
   if (obstacleFailPopup) obstacleFailPopup.classList.add("visible");
+    if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: "cmd",
+      payload: { name: "obstacleStopFail" }
+    }));
+  }
 }
 
 function showObstacleSuccess() {
+  if (hazardInfo) {
+    hazardInfo.success = true; 
+  }
   if (obstacleSuccessPopup) obstacleSuccessPopup.classList.add("visible");
+    //  서버에 “장애물 앞 정상 정지했다” 신호 보내기
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: "cmd",
+      payload: { name: "obstacleStopSuccess" }
+    }));
+  }
 }
 
 // 5초 뒤 장애물 삭제 스케줄
@@ -1359,25 +1376,25 @@ function scheduleObstacleClear() {
 // 상태(State) 들어올 때마다 호출해서 이벤트 판단
 function handleObstacleState(st) {
   if (!hazardInfo.active || hazardInfo.handled || !st) return;
-    // ✅ 이미 끝난 런이면 장애물 판정 안 함
+    //  이미 끝난 런이면 장애물 판정 안 함
   if (st.finished) return;
   const rem = Number(st.remaining_m ?? 0);
   const speed = Number(st.v ?? 0); // m/s
   const hazardDist = hazardInfo.dist;
   if (hazardDist == null) return;
 
-  // ✅ 안전 정지 조건: 장애물 위치 기준 200m 이내에서 속도 0 근처
+  //  안전 정지 조건: 장애물 위치 기준 200m 이내에서 속도 0 근처
   // rem: 정차 위치까지의 남은 거리
   // hazardDist: 장애물 위치까지의 남은 거리
   // → rem ∈ [hazardDist, hazardDist+200] & v≈0
-  if (rem >= hazardDist && rem <= hazardDist + 200 && speed > 0.1 && speed < 0.2) {
+  if (rem >= hazardDist && rem <= hazardDist + 350 && speed > 0.1 && speed < 0.2) {
     hazardInfo.handled = true;
     showObstacleSuccess();
     scheduleObstacleClear();
     return;
   }
 
-  // ❌ 충돌 조건: 장애물 위치를 지나쳐버림 (rem < hazardDist)
+  //  충돌 조건: 장애물 위치를 지나쳐버림 (rem < hazardDist)
   if (rem < hazardDist) {
     hazardInfo.handled = true;
     showObstacleWarning();
@@ -1544,7 +1561,7 @@ function handleObstacleState(st) {
     <span class="kbd">S</span> <span id="labelDown">제동 완해</span> ·
     <span class="kbd">A</span> <span id="labelRestart">6단 제동</span> ·
     <span class="kbd">B</span> <span id="labelRestart">제동곡선</span>
-    <!-- <span id="labelRelease">해방</span> <span class="kbd">N</span> -->
+    <!-- <span id="labelRelease">중립</span> <span class="kbd">N</span> -->
   </div>
 
   <canvas id="brakeLadder" style="position:absolute; right:10px; top:30px; width:28px; height:70%;"></canvas>
@@ -2095,7 +2112,7 @@ function buildCabOverlay(layoutKey) {
       ebText = tEB;
     }
 
-    // 🔥 상태에 따라 색/텍스트 갱신하는 함수
+    //  상태에 따라 색/텍스트 갱신하는 함수
     window.updateInstrumentLadder = function(st) {
       if (!st) return;
       const cur = Math.max(0, Math.min(ebIdx, st.lever_notch | 0));
@@ -2192,7 +2209,7 @@ const randIcon = icons[Math.floor(Math.random() * icons.length)];
 document.getElementById("trainIcon").src = randIcon;
 
 ws.addEventListener('open', () => {
-  // ✅ 보정표(IDW) 한 번만 세팅하면 이후 자동 제한시간 산출
+  //  보정표(IDW) 한 번만 세팅하면 이후 자동 제한시간 산출
   ws.send(JSON.stringify({
     type: "cmd",
     payload: {
@@ -2623,7 +2640,7 @@ function maybeSpawnEmergencyObstacle(initialDist) {
   hazardInfo.dist = hazardDist;
   hazardInfo.handled = false;
   hazardInfo.timeoutId = null;
-  // 🔥 서버에 장애물 위치 알려주기
+  //  서버에 장애물 위치 알려주기
 if (ws.readyState === WebSocket.OPEN) {
   ws.send(JSON.stringify({
     type: "cmd",
@@ -2995,17 +3012,17 @@ window.__updatePlatformLength = function(newLen) {
     platLineR.geometry = new THREE.BoxGeometry(0.2, 0.01, newLen);
     platLineR.position.set(-2.0915, platH + 0.01, platZ - newLen / 2);
 
-      // 🔥 1) 현재 플랫폼 길이 상태 갱신
+      //  1) 현재 플랫폼 길이 상태 갱신
     platformLen = newLen;
 
-    // 🔥 2) 사람 다시 뿌리기 (길이에 비례해서 인원 수 조절)
+    //  2) 사람 다시 뿌리기 (길이에 비례해서 인원 수 조절)
     if (window.spawnPeopleOnPlatform) {
       const baseCount = 30; // 210m일 때 30명
       const factor = newLen / 210; // 길이 비례
       window.spawnPeopleOnPlatform(Math.round(baseCount * factor));
     }
 
-    // 🔥 3) 기둥 + 지붕 + 램프도 새 길이에 맞게 리빌드
+    //  3) 기둥 + 지붕 + 램프도 새 길이에 맞게 리빌드
     if (window.__rebuildPlatformRoof) {
       window.__rebuildPlatformRoof(newLen);
     }
@@ -3436,7 +3453,7 @@ camera.lookAt(xOffset, yOffset, zOffset);
 
 }
 
-// 🔥 목표 FPS (원하면 24, 30, 45 등으로 바꿔도 됨)
+//  목표 FPS (원하면 24, 30, 45 등으로 바꿔도 됨)
   const TARGET_FPS = 36; //dt 0.0025 + fps36 ->>opt val!!
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
   let lastRenderTime = 0;
@@ -3491,7 +3508,7 @@ camera.lookAt(xOffset, yOffset, zOffset);
             }
           }catch(e){ /* non-fatal */ }
         
-       // 🔥 비상 장애물 중 불 타입은 항상 카메라를 바라보게
+       //  비상 장애물 중 불 타입은 항상 카메라를 바라보게
     if (emergencyObstacle && emergencyObstacle.userData && emergencyObstacle.userData.billboard) {
       emergencyObstacle.lookAt(
         camera.position.x,
@@ -3677,13 +3694,13 @@ const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 function enforceInt(el,min,max){ el.addEventListener('input',()=>{ el.value=el.value.replace(/[^\d-]/g,'');}); el.addEventListener('change',()=>{let v=parseInt(el.value,10); if(isNaN(v)){el.value='';return;} el.value=String(clamp(v,min,max));});}
 function enforceFloat(el,min,max,d=1){ el.addEventListener('input',()=>{ el.value=el.value.replace(/[^0-9.\-]/g,'');}); el.addEventListener('change',()=>{let v=parseFloat(el.value); if(isNaN(v)){el.value='';return;} v=clamp(v,min,max); el.value=v.toFixed(d);});}
 
-/* ✅ 범위 갱신: 속도 40~130 / 거리 150~900 */
+/*  범위 갱신: 속도 40~130 / 거리 150~900 */
 enforceInt(inputSpeed,40,300);
 enforceInt(inputDist,150,6000);
 enforceInt(inputLoadRate,0,120);
 enforceFloat(inputGrade,-10,10,1);
 
-/* ✅ 속도별 최소 거리 규칙 */
+/*  속도별 최소 거리 규칙 */
 function minDistForSpeed(v) {
   if (v >= 240) return 6000;
   if (v >= 200) return 5000;
@@ -3852,7 +3869,14 @@ if (fb) {
 /* ===== 시작/재시작 ===== */
 function startRun(){
 
-  // ✅ 새 런 시작할 때 장애물 상태 / 팝업 완전 리셋
+  //  새 런 시작할 때 장애물 플래그 리셋
+  hazardInfo.active = false;
+  hazardInfo.dist = null;
+  hazardInfo.handled = false;
+  hazardInfo.timeoutId = null;
+  hazardInfo.success = false;
+
+  //  새 런 시작할 때 장애물 상태 / 팝업 완전 리셋
   hideObstaclePopups(); // 혹시 남아있는 팝업 닫기
   if (window.clearEmergencyObstacle) {
     try { clearEmergencyObstacle(); } catch (e) {}
@@ -3861,10 +3885,10 @@ function startRun(){
   }
 
   
-  // ✅ 새 런 시작할 때 점수 오버레이 숨기기
+  //  새 런 시작할 때 점수 오버레이 숨기기
   hideScoreOverlay();
 
-    // ✅ 랜덤 토글이 켜져 있다면 값 먼저 섞기
+    //  랜덤 토글이 켜져 있다면 값 먼저 섞기
   const rndEl = document.getElementById('rndToggle');
   if (rndEl && rndEl.checked) {
     randomizeInputs();
@@ -3880,7 +3904,7 @@ function startRun(){
         grade=Number(inputGrade.value),
         mu=muFromWeather(weatherSelect.value);
 
-        // 🔥 랜덤 모드에서만 10% 확률로 비상 장애물 생성
+        //  랜덤 모드에서만 10% 확률로 비상 장애물 생성
   if (rndEl && rndEl.checked && window.maybeSpawnEmergencyObstacle) {
     window.maybeSpawnEmergencyObstacle(dist);
   } else if (window.clearEmergencyObstacle) {
@@ -4022,7 +4046,7 @@ ws.onmessage = (ev) => {
   st = msg.payload;
   window.st = st;
 
-    // 🔥 게임 종료 시점 감지 → 점수 오버레이
+    //  게임 종료 시점 감지 → 점수 오버레이
   const nowFinished = !!st.finished;
   if (nowFinished && !lastFinishedFlag) {
     let score = Number(st.score ?? 0);
@@ -4039,7 +4063,7 @@ ws.onmessage = (ev) => {
     showScoreOverlay(score, stopErr);
   }
   lastFinishedFlag = nowFinished;
-    // 🔥 장애물 관련 이벤트 판정
+    //  장애물 관련 이벤트 판정
   handleObstacleState(st);
   // 🔹 서버 상태에 train_name이 있으면 mini HUD 타이틀을 그걸로 사용
   if (st.train_name && miniTitle) {
@@ -4062,7 +4086,7 @@ if (rem >= 0) {
   else           remEl.textContent = "-" + Math.abs(rem).toFixed(0) + " m";
 }
 
-// ✅ 색상 조건 적용 (±0.35m 이내면 초록색, 아니면 기본)
+//  색상 조건 적용 (±0.35m 이내면 초록색, 아니면 기본)
 if (Math.abs(rem) <= 0.35) {
   remEl.style.color = "#9effb5";   // 초록
 } else {
@@ -4138,7 +4162,7 @@ if (!Number.isFinite(toShowInt)) {
 
 timerEl.innerHTML = formatTimeSec(toShowInt);
 
-// ✅ 색상 조건 추가
+//  색상 조건 추가
 if (Math.abs(toShowInt) <= 2) {
   timerEl.style.color = "#9effb5";   // 초록색
   timerEl.classList.remove('bad');
@@ -4753,7 +4777,7 @@ const previewFamily = document.getElementById('trainPreviewFamily');
 const previewFormation = document.getElementById('trainPreviewFormation');
 const previewCaption = document.getElementById('trainPreviewCaption');
 
-// 🔥 난이도 게이지 엘리먼트
+//  난이도 게이지 엘리먼트
 const brakeGaugeEl = document.getElementById('brakeDiffGauge');
 const ctrlGaugeEl = document.getElementById('ctrlDiffGauge');
 
@@ -4961,7 +4985,7 @@ if (window.__updatePlatformLength) {
   window.__updatePlatformLength(desiredPlatLen);
 }
 
-// 🔥 여기서 platRemove도 같이 조정
+//  여기서 platRemove도 같이 조정
 const newPlatRemove =
   /n700s_3000/i.test(filePath) ||
   /e26/i.test(filePath) ||
@@ -4998,7 +5022,7 @@ function populateSeries(){
   if (list[0]) {
     setTrainLengthOptions(list[0].lengths);
 
-    // 🔥 첫 진입 시 우측 프리뷰도 동기화
+    //  첫 진입 시 우측 프리뷰도 동기화
     updateTrainPreview({
       file: list[0].file,
       code: list[0].code,
@@ -5021,7 +5045,7 @@ trainSeriesEl.addEventListener('change',(e)=>{
   // 편성 옵션 갱신
   setTrainLengthOptions(lengths);
 
-  // 🔥 우측 프리뷰 갱신
+  //  우측 프리뷰 갱신
   updateTrainPreview({
     file: opt.value,
     code: opt.dataset.code,
@@ -5060,7 +5084,7 @@ window.__brakeGuideOn = true;
       labelStartKey: "시작",
       labelUp: "강화",
       labelDown: "완화",
-      labelRelease: "해방",
+      labelRelease: "중립",
       subtitleIntro: 
   "TASC 활성화 시 사용법: <b>150m</b> (P3 TASC 지상자) 지점까지 속도를 <b>60km/h</b> 이하로 낮추세요. 그 이후에는 <b>TASC(자동정차)</b>가 이루어집니다.",
 
@@ -5102,7 +5126,7 @@ window.__brakeGuideOn = true;
 
           return tips[Math.floor(Math.random() * tips.length)];
         },
-        hintAgain: "Space로 다시 시작 · N 해방 · W/S로 조작"
+        hintAgain: "Space로 다시 시작 · N 중립 · W/S로 조작"
       }
     },
     en: {
@@ -5140,7 +5164,7 @@ window.__brakeGuideOn = true;
   stop_bad: "Failed to stop with B1/B2 — rough stop",
   step_good: "Stepwise braking was applied correctly",
   step_bad: "Stepwise braking was poor, causing jolts and discomfort for passengers",
-  eb_good: "Safe braking range observed — no EB applied",
+  eb_good: "Safe braking range observed",
   eb_bad: "EB applied, causing a harsh jolt",
   score: n => `Final score: ${n}/100`,
   stopErr: m => `Stopping error: ${m.toFixed(2)} m`,
