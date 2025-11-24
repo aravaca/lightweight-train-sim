@@ -2521,6 +2521,142 @@ function createTrackCanvasTexture() {
 //   sleepers.setMatrixAt(i, m);
 // }
 
+
+// === 가설 전차선 전봇대 + 전선 추가 ===
+  // ⚠ PNG 파일 경로는 네가 가진 실제 파일명으로 고쳐 써줘!
+  const leftPoleTex = texLoader.load("/static/textures/pole_left.png");
+  const rightPoleTex = texLoader.load("/static/textures/pole_right.png");
+
+  [leftPoleTex, rightPoleTex].forEach(tex => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.transparent = true;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipMapLinearFilter;
+  });
+
+  const poleHeight = 5.5; // 전봇대 높이 5m
+  const poleWidth = 2.7; // 전봇대 두께(화면상 폭)
+
+  const poleGeo = new THREE.PlaneGeometry(poleWidth, poleHeight);
+  const leftPoleMat = new THREE.MeshBasicMaterial({
+    map: leftPoleTex,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  const rightPoleMat = new THREE.MeshBasicMaterial({
+    map: rightPoleTex,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  // 선로 기준 x 위치 (왼쪽/오른쪽 바깥쪽에 세움)
+  // 가운데 선로가 x≈0, 오른쪽 선로가 x≈4 이라서
+  // 살짝 바깥쪽으로 빼서 배치
+  const xLeftPole = -0.8; // 플랫폼 있는 쪽, 선로 바깥
+  const xRightPole = 5.1; // 오른쪽 선로 바깥
+
+
+  // z 기준: 정차 위치가 z=200
+  // 50m 간격으로 50m ~ 600m 전까지 전봇대 설치 (원하면 범위 조절 가능)
+const poleInterval = 55;
+const poleMinDistRight = -100;  // 기존
+const poleMinDistLeft = -100;   // 변경
+const poleMaxDist = 6000;
+// 👉 platRemove를 전역 변수로
+let platRemove = 215;
+
+// 👉 왼쪽 폴들을 나중에 다 지우기 위해 배열로 저장
+const leftPoles = [];
+/** 오른쪽 전봇대는 한 번만 만들면 됨 */
+function buildRightPoles() {
+  for (let d = poleMinDistRight; d <= poleMaxDist; d += poleInterval) {
+    const z = 200 - d;
+    const rp = new THREE.Mesh(poleGeo, rightPoleMat);
+    rp.position.set(xRightPole, poleHeight / 2, z);
+    rp.renderOrder = 2;
+    scene.add(rp);
+  }
+}
+
+/** platRemove 기준으로 왼쪽 전봇대 재생성 */
+function rebuildLeftPoles(newPlatRemove) {
+  if (typeof newPlatRemove === "number") {
+    platRemove = newPlatRemove;
+  }
+
+  // 1) 기존 폴 제거
+  leftPoles.forEach(p => {
+    scene.remove(p);
+    if (p.geometry) p.geometry.dispose();
+  });
+  leftPoles.length = 0;
+
+  // 2) 새 platRemove 기준으로 다시 생성
+  for (let d = poleMinDistLeft; d <= poleMaxDist; d += poleInterval) {
+    if (d <= platRemove && d >= -10) {
+      // 플랫폼 영역: 빈 공간으로 둠
+      continue;
+    }
+    const z = 200 - d;
+    const lp = new THREE.Mesh(poleGeo, leftPoleMat);
+    lp.position.set(xLeftPole, poleHeight / 2, z);
+    lp.renderOrder = 2;
+    scene.add(lp);
+    leftPoles.push(lp);
+  }
+}
+
+// 초기 생성
+buildRightPoles();
+rebuildLeftPoles(215);
+
+// 외부에서 호출 가능하게 export
+window.rebuildLeftPoles = rebuildLeftPoles;
+  // === 전차선(얇은 검은색 선) 추가 ===
+  // 선로 중심은 x ≈ 0, x ≈ 4 이라서 각 선로 위에 하나씩
+  const wireY = 4.6345; // 높이 4.6345
+  const wireRadius = 0.015; // 아주 얇게
+
+  // 전선은 '플랫폼 전'뿐 아니라 '플랫폼 끝까지' 이어지게 길게 뽑자
+  // 예시: 정차 위치 기준 -800m 지점부터 +100m 지점까지
+  const wireZStart = 200 - 6000; // 멀리
+  const wireZEnd = 200 + 100; // 정차 지점 약간 지나서
+  const wireLen = Math.abs(wireZEnd - wireZStart);
+  const wireZMid = (wireZStart + wireZEnd) / 2;
+
+  const wireGeo = new THREE.CylinderGeometry(wireRadius, wireRadius, wireLen, 8);
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+  // 1번 선로 위 전선 (x ≈ 0)
+  const wire1 = new THREE.Mesh(wireGeo, wireMat);
+  wire1.position.set(0.5, wireY, wireZMid);
+  wire1.rotation.x = Math.PI / 2; // 기본이 Y축 방향이라 Z축으로 눕힘
+  wire1.castShadow = false;
+  scene.add(wire1);
+
+  // 2번 선로 위 전선 (x ≈ 4)
+  const wire2 = new THREE.Mesh(wireGeo, wireMat);
+  wire2.position.set(3, wireY, wireZMid);
+  wire2.rotation.x = Math.PI / 2;
+  wire2.castShadow = false;
+  scene.add(wire2);
+
+  poleOffset = 0.9
+  // 3번 선로 위 전선 (x ≈ 0)
+  const wire3 = new THREE.Mesh(wireGeo, wireMat);
+  wire3.position.set(0.5, wireY - poleOffset, wireZMid);
+  wire3.rotation.x = Math.PI / 2; // 기본이 Y축 방향이라 Z축으로 눕힘
+  wire3.castShadow = false;
+  scene.add(wire3);
+
+  // 4번 선로 위 전선 (x ≈ 4)
+  const wire4 = new THREE.Mesh(wireGeo, wireMat);
+  wire4.position.set(3, wireY - poleOffset, wireZMid);
+  wire4.rotation.x = Math.PI / 2;
+  wire4.castShadow = false;
+  scene.add(wire4);
+
+
   // --- 플랫폼 (정차벽 기준 -platformLen ~ 0m, 오른쪽에 배치) ---
 let platformLen = 210; // 플랫폼 길이
 const platH = 1; // 플랫폼 높이 (1.13m로 설정)
@@ -2833,7 +2969,7 @@ const signDistances = [0, 500]; // m 단위 거리
 // 기둥(폴)과 보드(판넬) 재질/형상
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.6, metalness: 0.2 });
 
-const poleGeo = new THREE.BoxGeometry(0.06, 1.2, 0.06); // w,h,d
+const poleGeo2 = new THREE.BoxGeometry(0.06, 1.2, 0.06); // w,h,d
 
 // Helper: create a circular sign texture with large distance text (e.g., "150m")
 function createDistanceSignTexture(distanceMeters){
@@ -2898,7 +3034,7 @@ signDistances.forEach(d => {
   if (z < -300) return; // 안전 차단
 
   // 폴(기둥)
-  const pole = new THREE.Mesh(poleGeo, poleMat);
+  const pole = new THREE.Mesh(poleGeo2, poleMat);
   pole.position.set(-2.1, platH + 0.1, z); // 플랫폼 위에서 0.1m 올라온 기둥 중심
   if (d == 0) {
     pole.position.set(+2.1, 0.4, z); // 기둥 높이 조정
@@ -4497,8 +4633,32 @@ function loadVehicleFile(filePath){
           : 205;
 
         if (window.__updatePlatformLength) window.__updatePlatformLength(desiredPlatLen);
-
+        
       }
+      
+// 플랫폼 길이
+const desiredPlatLen =
+  /n700s_3000/i.test(filePath) ||
+  /e26/i.test(filePath) ||
+  /ktx1/i.test(filePath)
+    ? 405 // 장대편성 (신칸센, KTX, 카시오페아 등)
+    : 205; // 일반 통근형
+
+if (window.__updatePlatformLength) {
+  window.__updatePlatformLength(desiredPlatLen);
+}
+
+// 🔥 여기서 platRemove도 같이 조정
+const newPlatRemove =
+  /n700s_3000/i.test(filePath) ||
+  /e26/i.test(filePath) ||
+  /ktx1/i.test(filePath)
+    ? 415 // 플랫폼 비워줄 길이 (장대편성용)
+    : 215; // 일반 열차용
+
+if (window.rebuildLeftPoles) {
+  window.rebuildLeftPoles(newPlatRemove);
+}
     })
     .catch(console.error);
 }
