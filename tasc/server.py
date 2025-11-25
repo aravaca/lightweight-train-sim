@@ -1195,13 +1195,13 @@ class StoppingSim:
                 st.issues["stop_not_b1_msg"] = "정차 시 B3 이상으로 정차함 - 승차감 불쾌"
 
             if self.is_stair_pattern(self.notch_history):
-                score += 500
+                score += 300
             else:
                 if self.tasc_enabled and not self.manual_override:
-                    score += 500
+                    score += 300
 
             err_abs = abs(st.stop_error_m or 0.0) # 정차 오차 절대값
-            error_score = max(0, 500 - int(err_abs * 500))
+            error_score = max(0, 500 - int(err_abs / 2 * 500))
             score += error_score
 
             if abs(st.stop_error_m or 0.0) < 0.01: # 정차 오차 0.1cm 이내
@@ -1242,7 +1242,7 @@ class StoppingSim:
                 score -= 1000
 
             minq = 300
-            maxq = 1700
+            maxq = 1200
             if score < minq:
                 score = minq    
             
@@ -1281,9 +1281,9 @@ class StoppingSim:
     def is_stair_pattern(self, notches: List[int]) -> bool:
 
         notches = self.remove_adjacent_duplicates(notches)
-        print(notches)
+        # print(notches)
         notches = self.remove_negative_values(notches)
-        print(notches)
+        # print(notches)
         if len(notches) < 5:
             return False
 
@@ -1491,6 +1491,7 @@ async def ws_endpoint(ws: WebSocket):
 
                 elif name == "start":
                     sim.start()
+                    sim.run_over = False
 
                 elif name in ("stepNotch", "applyNotch"):
                     delta = int(payload.get("delta", 0))

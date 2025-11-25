@@ -1,5 +1,5 @@
 git add .
-git commit -m "obstacle popup bug fix"
+git commit -m "obstacle minor bug fix"
 git push origin main
 
 pip install fastapi uvicorn[standard]
