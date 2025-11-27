@@ -1617,6 +1617,7 @@ function handleObstacleState(st) {
           <select id="trainFamily" class="form-input">
             <option value="E233" selected>E233계</option>
             <option value="E235">E235계</option>
+            <option value="E721">E721계</option>
             <option value="3000">서울교통공사 3000호대 VVVF 전동차</option>
             <option value="N700S">신칸센 N700S계</option> 
             <option value="100000">한국철도공사 100000호대 전동차</option> 
@@ -1859,14 +1860,64 @@ const CAB_LAYOUTS = {
       maxSpeed: 300 // 계기판 끝속도
     },
   },
+  e721: {
+    src: "/static/photos/e721_cab.png",
+    size: { width: 1890, height: 1080 },
+    windowPoly: [
+[
+[542, 62],
+[1275, 62],
+[1268, 656],
+[578, 656],
+[565, 523],
+[559, 406],
+[548, 293],
+[542, 185],
+  ],
+  [
+[1546, 609],
+[1547, 644],
+[1625, 675],
+[1646, 699],
+[1651, 754],
+[1886, 843],
+[1886, 633],
+[1733, 616],
+[1733, 567],
+[1655, 567],
+[1642, 616],
+  ]
+    ],
+    speedText: { x: 1890, y: 1081, fontSize: 0, letterSpacing: 2 },
+    needle: {
+      img: "/static/photos/analog_needle.png", // 바늘 PNG 경로
+      width: 70, // SVG 안에서 바늘 크기
+      height: 103,
+
+      // cab.png 기준 계기판 중심 (임시 값)
+      cx: 623,
+      cy: 985,
+
+      // needle.png 안에서 바늘 축 위치 (임시 값: 이미지 중앙)
+      px: 31.27, //265
+      py: 69.8, //593
+
+      // 회전 범위 + 풀스케일 속도
+      minAngle: -148, // 0 km/h일 때 각도
+      maxAngle: 100, // maxSpeed일 때 각도
+      maxSpeed: 160 // 계기판 끝속도
+    },
+  },
 };
 
-// vehicle JSON 경로 → 레이아웃 키
+// vehicle JSON 파일 경로 → 레이아웃 key 매핑
 function getCabLayoutKeyFromVehicle(filePath) {
   const lower = (filePath || "").toLowerCase();
   if (lower.includes("n700s")) return "n700s";
-  if (lower.includes("ktx") || lower.includes("999")) return "ktx";
-  // TODO: 다른 열차도 필요하면 여기에 추가
+  if (lower.includes("ktx1")) return "ktx";
+  if (lower.includes("e721")) return "e721";
+
+  // 필요하면 EF510, 서울 3000 등도 여기에 else-if로 추가
   return "default";
 }
 
@@ -2434,14 +2485,7 @@ const scene = new THREE.Scene();
   let targetDPR = renderer.getPixelRatio();
 
 
-// vehicle JSON 파일 경로 → 레이아웃 key 매핑
-function getCabLayoutKeyFromVehicle(filePath) {
-  const lower = (filePath || "").toLowerCase();
-  if (lower.includes("n700s")) return "n700s";
-  if (lower.includes("ktx1")) return "ktx";
-  // 필요하면 EF510, 서울 3000 등도 여기에 else-if로 추가
-  return "default";
-}
+
 
 
   function resize(){
@@ -3551,6 +3595,293 @@ try {
   stationMelody = null;
 }
 
+// ===== VVVF SYNTH ENGINE (FM 기반, 가속/제동 공통 톤) =====
+let vvvfCtx = null;
+let vvvfEngine = null;
+
+class VVVFEngine {
+  constructor(ctx) {
+    this.ctx = ctx;
+
+    // FM VVVF 음원: carrier + modulator
+    this.carrier = ctx.createOscillator();
+    this.carrier.type = "sine";
+
+    this.modulator = ctx.createOscillator();
+    this.modulator.type = "sine";
+
+    this.modGain = ctx.createGain();
+    this.modGain.gain.value = 0;
+
+    this.toneGain = ctx.createGain();
+    this.toneGain.gain.value = 0;
+
+    // jerk(툭) + 부드러운 이어짐용 transient
+    this.transient = ctx.createGain();
+    this.transient.gain.value = 1.0;
+
+    this.modulator.connect(this.modGain);
+    this.modGain.connect(this.carrier.frequency);
+
+    this.carrier.connect(this.toneGain);
+    this.toneGain.connect(this.transient);
+
+    // 마스터
+    this.master = ctx.createGain();
+    this.master.gain.value = 0.4;
+    this.transient.connect(this.master);
+    this.master.connect(ctx.destination);
+
+    // 상태
+    this.lastMode = "none"; // "none" | "power" | "brake" | "eb"
+    this.currentPowerNotch = 0;
+    this.currentBrakeNotch = 0;
+
+    // 부드러운 글라이드용 이전 값 기억
+    this.prevCFreq = 0;
+    this.prevMFreq = 0;
+    this.prevVol = 0;
+
+    this.carrier.start();
+    this.modulator.start();
+  }
+
+  setMasterVolume(v) {
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(v, t, 0.15);
+  }
+
+update({ speedKmh, powerNotch, maxPowerNotch, brakeNotch, maxBrakeNotch, isEB }) {
+    const t = this.ctx.currentTime;
+    const v = Math.max(0, speedKmh || 0);
+    const normSpeed = Math.min(1, v / 120); // 0~120km/h 기준
+
+    // ========== 0. 완전 정지면 깔끔하게 무음 ==========
+    if (v < 0.2) {
+      // 속도 거의 0이면 어떤 노치든 소리 OFF
+      this.toneGain.gain.setTargetAtTime(0, t, 0.12);
+      this.master.gain.setTargetAtTime(0, t, 0.25);
+      this.modGain.gain.setTargetAtTime(0, t, 0.12);
+
+      this.lastMode = "none";
+      this.currentPowerNotch = 0;
+      this.currentBrakeNotch = 0;
+      this.prevCFreq = 0;
+      this.prevMFreq = 0;
+      this.prevVol = 0;
+      return;
+    } else {
+      // 움직이고 있을 때는 마스터 볼륨 켜두기
+      this.master.gain.setTargetAtTime(0.4, t, 0.25);
+    }
+
+    // ========== 1. 모드 결정 ("power", "brake", "eb", "coast") ==========
+    let mode = "coast"; // 기본은 코스팅(0단 주행)
+
+    if (isEB) mode = "eb";
+    else if (powerNotch > 0) mode = "power";
+    else if (brakeNotch > 0) mode = "brake";
+    // powerNotch, brakeNotch 둘 다 0이면서 v>0 ⇒ "coast" 유지
+
+    const POWER_TABLE = [
+      { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 }, // N
+      { vol: 0.20, baseMul: 1.0, modMul: 7.0, depth: 130 }, // P1
+      { vol: 0.27, baseMul: 1.1, modMul: 8.0, depth: 180 }, // P2
+      { vol: 0.33, baseMul: 1.2, modMul: 9.0, depth: 230 }, // P3
+      { vol: 0.39, baseMul: 1.3, modMul: 9.8, depth: 280 }, // P4
+      { vol: 0.45, baseMul: 1.4, modMul:10.6, depth: 330 }, // P5
+    ];
+
+    const BRAKE_TABLE = [
+      { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 }, // N
+      { vol: 0.16, baseMul: 0.9, modMul: 5.0, depth: 110 }, // B1
+      { vol: 0.20, baseMul: 0.9, modMul: 5.5, depth: 140 }, // B2
+      { vol: 0.24, baseMul: 0.95,modMul: 6.0, depth: 170 }, // B3
+      { vol: 0.28, baseMul: 1.0, modMul: 6.5, depth: 200 }, // B4
+      { vol: 0.32, baseMul: 1.0, modMul: 7.0, depth: 230 }, // B5+
+    ];
+
+    const pMax = maxPowerNotch || 5;
+    const bMax = maxBrakeNotch || 8;
+
+    let targetVol = 0;
+    let baseMul = 1.0;
+    let modMul = 0.0;
+    let depth = 0;
+
+    // ========== 2. 모드별 프로파일 결정 ==========
+    if (mode === "power") {
+      const pn = Math.max(1, Math.min(pMax, powerNotch || 0));
+      const idx = Math.min(POWER_TABLE.length - 1, pn);
+      const P = POWER_TABLE[idx];
+
+      baseMul = P.baseMul;
+      modMul = P.modMul;
+      depth = P.depth;
+      targetVol = P.vol * (0.30 + normSpeed * 0.7);
+    }
+    else if (mode === "brake" || mode === "eb") {
+      const bn = Math.max(1, Math.min(bMax, brakeNotch || (mode === "eb" ? bMax : 1)));
+      const idx = Math.min(BRAKE_TABLE.length - 1, bn);
+      const B = BRAKE_TABLE[idx];
+
+      baseMul = B.baseMul;
+      modMul = B.modMul;
+      depth = B.depth;
+
+      let strength = bn / bMax;
+      if (mode === "eb") {
+        strength = 1.1;
+        depth *= 1.3;
+      }
+
+      // 저속일수록 끼이익 강조
+      let squealBoost = 1.0;
+      if (v < 30) {
+        const f = 1 - v / 30; // 30→0 에서 0→1
+        modMul *= (1.0 + 1.8 * f);
+        depth *= (1.0 + 1.5 * f);
+        squealBoost = 1.0 + 0.4 * f;
+      }
+
+      targetVol = (0.18 + 0.28 * strength) * squealBoost;
+    }
+    else if (mode === "coast") {
+  // 📌 기본 사운드 성격: 가속보다 저음·풍성함 쪽으로
+  const speedFactor = Math.max(0.35, normSpeed); // 너무 작은 값이면 너무 얌전하니 바닥 올려줌
+
+  // 기본 모터음 계열은 조금 더 낮게, 둔탁하게
+  baseMul = 0.55; // 0.6 → 0.55 : 톤 살짝 더 낮춤
+
+  // 스위칭음은 살짝만, 대신 속도에 따라 자연스럽게 변조
+  modMul = 2.4 + 2.0 * speedFactor; // 3.0 + 2.3x → 2.4 + 2.0x : 고역 줄이고 바디감
+
+  // FM 깊이 높여서 “풍성한” 질감
+  depth = 80 + 140 * speedFactor; // 40+70x → 80+140x : 훨씬 리치해짐
+
+  // 볼륨도 coast 치고는 꽤 크게 (가속보다 약간 아래정도)
+  targetVol = 0.10 + 0.26 * speedFactor; // 0.03+0.10x → 0.10+0.26x
+}
+    // ========== 3. 저속 보정 (v<15일 때 전체적으로 줄이기) ==========
+const lowSpeedFactor = v < 5 ? (v / 5) : 1;
+depth *= lowSpeedFactor;
+targetVol *= lowSpeedFactor;
+
+// 🔉 고속 볼륨 감쇠
+let highSpeedFactor = 1.0;
+if (v > 40) {
+  const over = Math.min(v, 140) - 40; // 0 ~ 80
+  highSpeedFactor = 1.0 - (over / 100) * 0.5; // 60 → 1.0, 140 → 0.5
+}
+targetVol *= highSpeedFactor;
+
+        // ========== 4. 실제 주파수 계산 ==========
+    // vvvf 주파수 포화 (real train behavior)
+    let adjV;
+
+    if (v < 30) adjV = v; // 선형 증가
+    else if (v < 60) adjV = 30 + (v - 30) * 0.3; // 증가량 점점 둔화
+    else adjV = 39; // 사실상 포화
+
+    const baseMotor = 35 + adjV * 2.2;
+    const cFreq = baseMotor * baseMul;
+    const mFreq = baseMotor * modMul;
+
+    const prevC = this.prevCFreq || cFreq || 0;
+    const prevM = this.prevMFreq || mFreq || 0;
+    const prevV = this.prevVol || 0;
+
+    // 모드에 따른 램프 시간: P→N으로 놓는 순간은 좀 더 길게
+    const fromPowerToCoast =
+      (this.lastMode === "power" && mode === "coast");
+
+    const freqRamp = fromPowerToCoast ? 0.45 : 0.06; // 주파수 글라이드 시간
+    const volRamp = fromPowerToCoast ? 0.55 : 0.06; // 볼륨 감소를 더 천천히
+
+    if (mode === "coast" || mode === "power" || mode === "brake" || mode === "eb") {
+      if (cFreq > 0) {
+        this.carrier.frequency.setValueAtTime(prevC, t);
+        this.carrier.frequency.linearRampToValueAtTime(cFreq, t + freqRamp);
+      }
+      if (mFreq > 0) {
+        this.modulator.frequency.setValueAtTime(prevM, t);
+        this.modulator.frequency.linearRampToValueAtTime(mFreq, t + freqRamp);
+      }
+      this.modGain.gain.setTargetAtTime(depth, t, 0.05);
+      this.toneGain.gain.setTargetAtTime(targetVol, t, volRamp);
+    } else {
+      // 이 else는 사실상 안 들어옴 (v>=0.2 & 노치 구성상 항상 위 모드 중 하나)
+      this.toneGain.gain.setTargetAtTime(0, t, 0.10);
+      this.modGain.gain.setTargetAtTime(0, t, 0.10);
+    }
+
+    // ========== 5. jerk (노치/모드 전환 순간만) ==========
+    const pnNow = Math.max(0, powerNotch || 0);
+    const bnNow = Math.max(0, brakeNotch || 0);
+    const notchChanged =
+      pnNow !== this.currentPowerNotch || bnNow !== this.currentBrakeNotch;
+
+    // jerk는 power/brake/eb에서만, coast로 들어갈 때는 살짝만
+    const shouldJerk =
+      (mode === "power" || mode === "brake" || mode === "eb") && notchChanged;
+
+    if (shouldJerk) {
+      this.transient.gain.cancelScheduledValues(t);
+      this.transient.gain.setValueAtTime(1.0, t);
+      this.transient.gain.setTargetAtTime(1.0, t + 0.04, 0.06);
+
+      if (cFreq > 0) {
+        this.carrier.frequency.setValueAtTime(cFreq * 0.95, t);
+        this.carrier.frequency.linearRampToValueAtTime(cFreq * 1.05, t + 0.03);
+        this.carrier.frequency.setTargetAtTime(cFreq, t + 0.04, 0.05);
+      }
+      if (mFreq > 0) {
+        this.modulator.frequency.setValueAtTime(mFreq * 0.95, t);
+        this.modulator.frequency.linearRampToValueAtTime(mFreq * 1.05, t + 0.03);
+        this.modulator.frequency.setTargetAtTime(mFreq, t + 0.04, 0.05);
+      }
+    }
+
+    this.lastMode = mode;
+    this.currentPowerNotch = pnNow;
+    this.currentBrakeNotch = bnNow;
+
+    this.prevCFreq = cFreq || prevC;
+    this.prevMFreq = mFreq || prevM;
+    this.prevVol = targetVol || prevV;
+  }
+}
+
+function ensureVVVFEngine() {
+  if (!vvvfCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    vvvfCtx = new AC();
+  }
+  if (vvvfCtx.state === "suspended") {
+    vvvfCtx.resume();
+  }
+  if (!vvvfEngine) {
+    vvvfEngine = new VVVFEngine(vvvfCtx);
+  }
+}
+// ===== Station announcement trigger (by distance) =====
+let announcementPlayed = false; // 이미 재생했는지
+let announcementTriggerDist = 500; // 현재 열차 기준 목표 거리
+let announcementArmed = false; // 트리거가 "무장"됐는지
+let lastRemaining = null; // 직전 remaining_m
+
+function computeAnnouncementTriggerDistForCurrentTrain() {
+  const name = (vehicle?.name || getCurrentTrainName() || "").toLowerCase();
+
+  // KTX, N700S 계열이면 3000m에서
+  if (name.includes("ktx") || name.includes("n700s")) {
+    return 3000;
+  }
+  // 나머지는 500m
+  return 500;
+}
+
 function playStationMelody() {
   if (!stationMelody) return;
 
@@ -3867,6 +4198,8 @@ if (fb) {
 
 /* ===== 시작/재시작 ===== */
 function startRun(){
+  // 오디오 정책 해제 & VVVF 준비
+  try { ensureVVVFEngine(); } catch (e) {}
 
   //  새 런 시작할 때 장애물 플래그 리셋
   hazardInfo.active = false;
@@ -3882,6 +4215,12 @@ function startRun(){
   } else {
     resetHazardState();
   }
+
+  // 안내방송 상태 리셋
+  announcementPlayed = false;
+  announcementArmed = false;
+  lastRemaining = null;
+  announcementTriggerDist = computeAnnouncementTriggerDistForCurrentTrain();
 
   
   //  새 런 시작할 때 점수 오버레이 숨기기
@@ -3920,7 +4259,7 @@ const enabled = document.getElementById("tascToggle").checked;
   overlay.classList.add("hide"); isFinished=false; overlayShowingResult=false;
   btnMobileRestart.classList.add("hide");
   // play station melody on start (if available)
-  try{ playStationMelody(2); }catch(e){}
+  // try{ playStationMelody(2); }catch(e){}
 }
 btnStart.addEventListener("click", startRun);
 
@@ -4044,6 +4383,66 @@ ws.onmessage = (ev) => {
   // 상태 저장
   st = msg.payload;
   window.st = st;
+// --- 안내방송: 남은거리 crossing 기반 트리거 ---
+  try {
+    if (typeof st.remaining_m === "number" && !announcementPlayed) {
+      const rem = st.remaining_m;
+
+      // 첫 프레임이면 just 기록만
+      if (lastRemaining === null) {
+        lastRemaining = rem;
+      }
+
+      // 1) 한번이라도 트리거 거리보다 "바깥쪽(더 멀리)"에 가 본 적이 있어야 armed
+      // rem > triggerDist 인 구간을 지나간 후에만 true
+      if (!announcementArmed && rem > announcementTriggerDist) {
+        announcementArmed = true;
+      }
+
+      // 2) armed 된 상태에서, rem 이 triggerDist 를 넘어 내려올 때 (crossing) 재생
+      if (announcementArmed &&
+          lastRemaining > announcementTriggerDist &&
+          rem <= announcementTriggerDist &&
+          rem > 0) {
+        playStationMelody();
+        announcementPlayed = true;
+      }
+
+      lastRemaining = rem;
+    }
+  } catch (e) {
+    console.debug("announcement trigger error", e);
+  }
+// --- VVVF 업데이트 (속도 + 레버 노치 기반) ---
+  try {
+    ensureVVVFEngine();
+
+    if (vvvfEngine && typeof st.v === "number") {
+      const speedKmh = st.v * 3.6;
+      const rawNotch = st.lever_notch | 0;
+
+      const maxBrakeIdx = getEbIndex(); // EB 인덱스
+      const maxPowerNotch =
+        (vehicle && Number.isInteger(vehicle.forward_notches))
+          ? vehicle.forward_notches
+          : 5;
+
+      const powerNotch = rawNotch < 0 ? -rawNotch : 0;
+      const brakeNotch = rawNotch > 0 ? rawNotch : 0;
+      const isEB = (rawNotch === maxBrakeIdx);
+
+      vvvfEngine.update({
+        speedKmh,
+        powerNotch,
+        maxPowerNotch,
+        brakeNotch,
+        maxBrakeNotch: maxBrakeIdx,
+        isEB
+      });
+    }
+  } catch (e) {
+    console.debug("VVVF update error", e);
+  }
 
     //  게임 종료 시점 감지 → 점수 오버레이
   const nowFinished = !!st.finished;
@@ -4086,7 +4485,7 @@ if (rem >= 0) {
 }
 
 //  색상 조건 적용 (±0.35m 이내면 초록색, 아니면 기본)
-if (Math.abs(rem) <= 0.35) {
+if (Math.abs(rem) <= 1.00) {
   remEl.style.color = "#9effb5";   // 초록
 } else {
   remEl.style.color = "";          // 기본 (.stat의 하얀색으로 복귀)
@@ -4763,7 +5162,16 @@ GE999: [{
   lines: "지구(地球) → 안드로메다(アンドロメダ)",
   file: "/static/galaxy999.json",
   lengths: [11]
-}]
+}],
+E721: [
+  {
+    code: "JR EAST E721-1000",
+    lines: "센다이 공항 액세스선",
+    file: "/static/e721_1000.json",
+    lengths: [4],
+  }
+]
+
 
 };
 
