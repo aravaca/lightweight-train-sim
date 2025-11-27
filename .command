@@ -1,5 +1,5 @@
 git add .
-git commit -m "add vvvf sound"
+git commit -m "update mitsubishi vvvf sound"
 git push origin main
 
 pip install fastapi uvicorn[standard]

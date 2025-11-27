@@ -3599,16 +3599,385 @@ try {
 let vvvfCtx = null;
 let vvvfEngine = null;
 
+// // [수정 3] 누락된 화이트 노이즈 생성 함수 추가
+// function createWhiteNoiseNode(ctx) {
+//   const bufferSize = 2 * ctx.sampleRate;
+//   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+//   const data = buffer.getChannelData(0);
+//   for (let i = 0; i < bufferSize; i++) {
+//     data[i] = Math.random() * 2 - 1;
+//   }
+//   const noise = ctx.createBufferSource();
+//   noise.buffer = buffer;
+//   noise.loop = true;
+//   noise.start(0);
+//   return noise;
+// }
+
+// class VVVFEngine {
+// constructor(ctx) {
+//     this.ctx = ctx;
+
+//     // 노이즈 노드 생성 (주행음, 레일음)
+//     this.noise = createWhiteNoiseNode(ctx);
+//     this.noiseGain = ctx.createGain();
+//     this.noiseGain.gain.value = 0;
+    
+//     // 저역 필터 (롤링 사운드)
+//     this.lowPassFilter = ctx.createBiquadFilter();
+//     this.lowPassFilter.type = "lowpass";
+//     this.lowPassFilter.frequency.value = 2200;
+//     this.lowPassFilter.Q.value = 0.8;
+    
+//     // 대역 필터 (레일 조인트 클릭음)
+//     this.bandPassFilter = ctx.createBiquadFilter();
+//     this.bandPassFilter.type = "bandpass";
+//     this.bandPassFilter.frequency.value = 1800;
+//     this.bandPassFilter.Q.value = 3.5;
+    
+//     // 고역 필터 (마찰음)
+//     this.highPassFilter = ctx.createBiquadFilter();
+//     this.highPassFilter.type = "highpass";
+//     this.highPassFilter.frequency.value = 3500;
+//     this.highPassFilter.Q.value = 0.5;
+    
+//     this.highNoiseGain = ctx.createGain();
+//     this.highNoiseGain.gain.value = 0;
+
+//     // 마스터 게인
+//     this.master = ctx.createGain();
+//     this.master.gain.value = 0.4;
+//     this.master.connect(ctx.destination);
+
+//     this.noise.connect(this.lowPassFilter).connect(this.noiseGain).connect(this.master);
+//     this.noise.connect(this.bandPassFilter).connect(this.noiseGain);
+//     this.noise.connect(this.highPassFilter).connect(this.highNoiseGain).connect(this.master);
+
+//     // FM VVVF 음원: carrier + modulator
+//     this.carrier = ctx.createOscillator();
+//     this.carrier.type = "sine";
+
+//     this.modulator = ctx.createOscillator();
+//     this.modulator.type = "sine";
+
+//     this.modGain = ctx.createGain();
+//     this.modGain.gain.value = 0;
+
+//     this.toneGain = ctx.createGain();
+//     this.toneGain.gain.value = 0;
+
+//     // jerk(툭) + 부드러운 이어짐용 transient
+//     this.transient = ctx.createGain();
+//     this.transient.gain.value = 1.0;
+
+//     this.modulator.connect(this.modGain);
+//     this.modGain.connect(this.carrier.frequency);
+
+//     this.carrier.connect(this.toneGain);
+//     this.toneGain.connect(this.transient);
+//     this.transient.connect(this.master);
+
+//     // 추가 변조 오실레이터 (Saw, Square)
+//     this.modSaw = ctx.createOscillator();
+//     this.modSaw.type = "sawtooth";
+//     this.modSawGain = ctx.createGain();
+//     this.modSawGain.gain.value = 0;
+
+//     this.modSq = ctx.createOscillator();
+//     this.modSq.type = "square";
+//     this.modSqGain = ctx.createGain();
+//     this.modSqGain.gain.value = 0;
+
+//     this.modSaw.connect(this.modSawGain).connect(this.carrier.frequency);
+//     this.modSq.connect(this.modSqGain).connect(this.carrier.frequency);
+
+//     // 오실레이터 시작
+//     this.carrier.start();
+//     this.modulator.start();
+//     this.modSaw.start();
+//     this.modSq.start();
+
+//     // 상태 변수
+//     this.lastMode = "none";
+//     this.currentPowerNotch = 0;
+//     this.currentBrakeNotch = 0;
+
+//     this.prevCFreq = 0;
+//     this.prevMFreq = 0;
+//     this.prevVol = 0;
+//   }
+
+//   setMasterVolume(v) {
+//     const t = this.ctx.currentTime;
+//     this.master.gain.setTargetAtTime(v, t, 0.15);
+//   }
+
+//   update({ speedKmh, powerNotch, maxPowerNotch, brakeNotch, maxBrakeNotch, isEB }) {
+//     const t = this.ctx.currentTime;
+//     const v = Math.max(0, speedKmh || 0);
+//     const normSpeed = Math.min(1, v / 120);
+
+//     // [수정 1 & 2] 변수를 함수 최상단에 선언하여 Scope 오류 방지
+//     let targetVol = 0;
+//     let baseMul = 1.0;
+//     let modMul = 0.0;
+//     let depth = 0;        // 여기서 미리 선언
+//     let squealBoost = 1.0; // 여기서 미리 선언
+
+//     // ========== 0. 완전 정지면 깔끔하게 무음 ==========
+//     if (v < 0.2) {
+//       this.toneGain.gain.setTargetAtTime(0, t, 0.12);
+//       this.master.gain.setTargetAtTime(0, t, 0.25);
+      
+//       // depth가 0으로 초기화되어 있으므로 이제 안전하게 계산 가능
+//       this.modGain.gain.setTargetAtTime(depth * (0.9 - normSpeed * 0.5), t, 0.1);
+//       this.modSawGain.gain.setTargetAtTime(depth * (0.22 - normSpeed * 0.2), t, 0.1);
+//       this.modSqGain.gain.setTargetAtTime(depth * (0.08 - normSpeed * 0.07), t, 0.1);
+
+//       this.lastMode = "none";
+//       this.currentPowerNotch = 0;
+//       this.currentBrakeNotch = 0;
+//       this.prevCFreq = 0;
+//       this.prevMFreq = 0;
+//       this.prevVol = 0;
+//       return;
+//     } else {
+//       this.master.gain.setTargetAtTime(0.4, t, 0.25);
+//     }
+
+//     // ========== 1. 모드 결정 ==========
+//     let mode = "coast";
+//     if (isEB) mode = "eb";
+//     else if (powerNotch > 0) mode = "power";
+//     else if (brakeNotch > 0) mode = "brake";
+
+//     const POWER_TABLE = [
+//       { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 },
+//       { vol: 0.20, baseMul: 1.0, modMul: 7.0, depth: 130 },
+//       { vol: 0.27, baseMul: 1.1, modMul: 8.0, depth: 180 },
+//       { vol: 0.33, baseMul: 1.2, modMul: 9.0, depth: 230 },
+//       { vol: 0.39, baseMul: 1.3, modMul: 9.8, depth: 280 },
+//       { vol: 0.45, baseMul: 1.4, modMul: 10.6, depth: 330 },
+//     ];
+
+//     const BRAKE_TABLE = [
+//       { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 },
+//       { vol: 0.16, baseMul: 0.9, modMul: 5.0, depth: 110 },
+//       { vol: 0.20, baseMul: 0.9, modMul: 5.5, depth: 140 },
+//       { vol: 0.24, baseMul: 0.95, modMul: 6.0, depth: 170 },
+//       { vol: 0.28, baseMul: 1.0, modMul: 6.5, depth: 200 },
+//       { vol: 0.32, baseMul: 1.0, modMul: 7.0, depth: 230 },
+//     ];
+
+//     const pMax = maxPowerNotch || 5;
+//     const bMax = maxBrakeNotch || 8;
+
+//     // ========== 2. 모드별 프로파일 결정 ==========
+//     if (mode === "power") {
+//       const pn = Math.max(1, Math.min(pMax, powerNotch || 0));
+//       const idx = Math.min(POWER_TABLE.length - 1, pn);
+//       const P = POWER_TABLE[idx];
+
+//       baseMul = P.baseMul;
+//       modMul = P.modMul;
+//       depth = P.depth;
+
+//       // squealBoost는 위에서 이미 1.0으로 초기화됨
+//       if (v < 10) {
+//         const f = 1 - v / 10;
+//         modMul *= (1.0 - 1.40 * f);
+//         depth *= (1.0 - 1.80 * f);
+//         squealBoost = 1.0 - 0.22 * f;
+//       } else if (v < 20) {
+//         const f = 1 - (v - 10) / 10;
+//         modMul *= (1.0 - 0.60 * f);
+//         depth *= (1.0 - 1.10 * f);
+//         squealBoost = 1.0 - 0.12 * f;
+//       }
+
+//       targetVol = (P.vol * (0.30 + normSpeed * 0.7)) * squealBoost;
+
+//     } else if (mode === "brake" || mode === "eb") {
+//       const bn = Math.max(1, Math.min(bMax, brakeNotch || (mode === "eb" ? bMax : 1)));
+//       const idx = Math.min(BRAKE_TABLE.length - 1, bn);
+//       const B = BRAKE_TABLE[idx];
+
+//       baseMul = B.baseMul;
+//       modMul = B.modMul;
+//       depth = B.depth;
+
+//       let strength = bn / bMax;
+//       if (mode === "eb") {
+//         strength = 1.1;
+//         depth *= 1.3;
+//       }
+
+//       if (v < 25) {
+//         const f = 1 - v / 25;
+//         modMul *= (1.0 + 1.50 * f);
+//         depth *= (1.0 + 1.40 * f);
+//         squealBoost *= (1.0 + 0.35 * f); // 이제 squealBoost가 정의되어 있어 에러 안 남
+//       }
+
+//       targetVol = (0.18 + 0.28 * strength) * squealBoost;
+
+//     } else if (mode === "coast") {
+//       const speedFactor = Math.max(0.35, normSpeed);
+//       baseMul = 0.95;
+//       modMul = 2.4 + 2.0 * speedFactor;
+//       depth = 40 + 140 * speedFactor;
+//       targetVol = 0.10 + 0.26 * speedFactor;
+//     }
+
+//     // ========== 3. 저속/고속 보정 ==========
+//     const lowSpeedFactor = v < 5 ? (v / 5) : 1;
+//     depth *= lowSpeedFactor;
+//     targetVol *= lowSpeedFactor;
+
+//     let highSpeedFactor = 1.0;
+//     if (v > 40) {
+//       const over = Math.min(v, 90) - 40;
+//       highSpeedFactor = 1.0 - (over / 100) * 0.5;
+//     }
+//     targetVol *= highSpeedFactor;
+
+//     // ========== 4. 실제 주파수 계산 (미쓰비시 패턴) ==========
+//     let adjV;
+//     if (v < 8) adjV = v * 3.0;
+//     else if (v < 22) adjV = 24 + (v - 8) * 1.4;
+//     else if (v < 45) adjV = 44 + (v - 22) * 0.75;
+//     else if (v < 70) adjV = 61 + (v - 45) * 0.25;
+//     else adjV = 67 + (v - 70) * 0.05;
+
+//     const baseMotor = 35 + adjV * 2.2;
+//     const cFreq = baseMotor * baseMul;
+//     const mFreq = baseMotor * modMul;
+
+//     const prevC = this.prevCFreq || cFreq || 0;
+//     const prevM = this.prevMFreq || mFreq || 0;
+//     const prevV = this.prevVol || 0;
+
+//     const fromPowerToCoast = (this.lastMode === "power" && mode === "coast");
+//     const freqRamp = fromPowerToCoast ? 0.45 : 0.12;
+//     const volRamp = fromPowerToCoast ? 0.55 : 0.12;
+
+//     if (mode === "coast" || mode === "power" || mode === "brake" || mode === "eb") {
+//       if (cFreq > 0) {
+//         this.carrier.frequency.setValueAtTime(prevC, t);
+//         this.carrier.frequency.setTargetAtTime(cFreq, t + freqRamp, 0.1);
+//       }
+//       if (mFreq > 0) {
+//         this.modulator.frequency.setValueAtTime(prevM, t);
+//         this.modulator.frequency.setTargetAtTime(mFreq, t + freqRamp, 0.1);
+//       }
+//       this.modGain.gain.setTargetAtTime(depth, t, 0.05);
+//       this.toneGain.gain.setTargetAtTime(targetVol, t, volRamp);
+//     } else {
+//       this.toneGain.gain.setTargetAtTime(0, t, 0.10);
+//       this.modGain.gain.setTargetAtTime(0, t, 0.10);
+//     }
+
+//     // ========== 5. Jerk (과도 응답) ==========
+//     const pnNow = Math.max(0, powerNotch || 0);
+//     const bnNow = Math.max(0, brakeNotch || 0);
+//     const notchChanged = pnNow !== this.currentPowerNotch || bnNow !== this.currentBrakeNotch;
+    
+//     const shouldJerk = (mode === "power" || mode === "brake" || mode === "eb") && notchChanged;
+
+//     if (shouldJerk) {
+//       this.transient.gain.cancelScheduledValues(t);
+//       this.transient.gain.setValueAtTime(1.0, t);
+//       this.transient.gain.setTargetAtTime(1.0, t + 0.04, 0.06);
+
+//       if (cFreq > 0) {
+//         this.carrier.frequency.setValueAtTime(cFreq * 0.95, t);
+//         this.carrier.frequency.linearRampToValueAtTime(cFreq * 1.05, t + 0.03);
+//         this.carrier.frequency.setTargetAtTime(cFreq, t + 0.04, 0.05);
+//       }
+//       if (mFreq > 0) {
+//         this.modulator.frequency.setValueAtTime(mFreq * 0.95, t);
+//         this.modulator.frequency.linearRampToValueAtTime(mFreq * 1.05, t + 0.03);
+//         this.modulator.frequency.setTargetAtTime(mFreq, t + 0.04, 0.05);
+//       }
+//     }
+
+//     this.lastMode = mode;
+//     this.currentPowerNotch = pnNow;
+//     this.currentBrakeNotch = bnNow;
+
+//     this.prevCFreq = cFreq || prevC;
+//     this.prevMFreq = mFreq || prevM;
+//     this.prevVol = targetVol || prevV;
+    
+//     this.noiseGain.gain.setTargetAtTime(0.005 + normSpeed * 0.06, t, 0.2);
+//   }
+// }
+
+// [수정 3] 누락된 화이트 노이즈 생성 함수 (기존 유지)
+function createWhiteNoiseNode(ctx) {
+  const bufferSize = 2 * ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  noise.loop = true;
+  noise.start(0);
+  return noise;
+}
+
 class VVVFEngine {
   constructor(ctx) {
     this.ctx = ctx;
 
-    // FM VVVF 음원: carrier + modulator
-    this.carrier = ctx.createOscillator();
-    this.carrier.type = "sine";
+    // --- [1. 주행 소음 (Rolling Noise) 강화] ---
+    // 저음용 노이즈 (바퀴 구르는 소리)
+    this.rumbleNode = createWhiteNoiseNode(ctx);
+    this.rumbleFilter = ctx.createBiquadFilter();
+    this.rumbleFilter.type = "lowpass";
+    this.rumbleFilter.frequency.value = 150; // 웅웅거리는 소리
+    this.rumbleGain = ctx.createGain();
+    this.rumbleGain.gain.value = 0;
+    
+    this.rumbleNode.connect(this.rumbleFilter).connect(this.rumbleGain);
 
+    // 고음용 노이즈 (바람/레일 마찰음)
+    this.hissNode = createWhiteNoiseNode(ctx);
+    this.hissFilter = ctx.createBiquadFilter();
+    this.hissFilter.type = "bandpass";
+    this.hissFilter.frequency.value = 800;
+    this.hissFilter.Q.value = 0.5;
+    this.hissGain = ctx.createGain();
+    this.hissGain.gain.value = 0;
+
+    this.hissNode.connect(this.hissFilter).connect(this.hissGain);
+
+    // --- [2. 모터 공진 필터 (Cabinet Simulation)] ---
+    // 모터 소리가 너무 디지털스럽지 않게 '통 울림'을 추가
+    this.motorFilter = ctx.createBiquadFilter();
+    this.motorFilter.type = "lowpass";
+    this.motorFilter.frequency.value = 2500; 
+    this.motorFilter.Q.value = 1.0; // 금속성 공명 강조
+
+    // --- [3. 마스터 게인 연결] ---
+    this.master = ctx.createGain();
+    this.master.gain.value = 0.4;
+    this.master.connect(ctx.destination);
+
+    // 노이즈들을 마스터로
+    this.rumbleGain.connect(this.master);
+    this.hissGain.connect(this.master);
+
+    // --- [4. VVVF 합성 엔진 (GTO 질감)] ---
+    // Carrier: 실제 들리는 '윙~' 소리의 중심
+    this.carrier = ctx.createOscillator();
+    this.carrier.type = "sawtooth"; // Sine보다 Sawtooth가 GTO 특유의 거친 느낌을 더 잘 냄
+
+    // Modulator: 지글거리는 변조음
     this.modulator = ctx.createOscillator();
-    this.modulator.type = "sine";
+    this.modulator.type = "square"; // Square가 더 기계적인 질감을 줌
 
     this.modGain = ctx.createGain();
     this.modGain.gain.value = 0;
@@ -3616,34 +3985,37 @@ class VVVFEngine {
     this.toneGain = ctx.createGain();
     this.toneGain.gain.value = 0;
 
-    // jerk(툭) + 부드러운 이어짐용 transient
+    // Jerk 효과용
     this.transient = ctx.createGain();
     this.transient.gain.value = 1.0;
 
+    // FM 연결: Modulator -> ModGain -> Carrier Frequency
     this.modulator.connect(this.modGain);
     this.modGain.connect(this.carrier.frequency);
 
+    // 소리 경로: Carrier -> ToneGain -> Transient -> MotorFilter -> Master
     this.carrier.connect(this.toneGain);
     this.toneGain.connect(this.transient);
+    this.transient.connect(this.motorFilter);
+    this.motorFilter.connect(this.master);
 
-    // 마스터
-    this.master = ctx.createGain();
-    this.master.gain.value = 0.4;
-    this.transient.connect(this.master);
-    this.master.connect(ctx.destination);
+    // 보조 오실레이터 (1펄스 영역에서 모터 구동음 강화용)
+    this.subOsc = ctx.createOscillator();
+    this.subOsc.type = "sine";
+    this.subGain = ctx.createGain();
+    this.subGain.gain.value = 0;
+    this.subOsc.connect(this.subGain).connect(this.motorFilter);
 
-    // 상태
-    this.lastMode = "none"; // "none" | "power" | "brake" | "eb"
-    this.currentPowerNotch = 0;
-    this.currentBrakeNotch = 0;
-
-    // 부드러운 글라이드용 이전 값 기억
-    this.prevCFreq = 0;
-    this.prevMFreq = 0;
-    this.prevVol = 0;
-
+    // 시작
     this.carrier.start();
     this.modulator.start();
+    this.subOsc.start();
+
+    // 상태 변수
+    this.lastMode = "none";
+    this.currentPowerNotch = 0;
+    this.currentBrakeNotch = 0;
+    this.prevSpeed = 0;
   }
 
   setMasterVolume(v) {
@@ -3651,253 +4023,170 @@ class VVVFEngine {
     this.master.gain.setTargetAtTime(v, t, 0.15);
   }
 
-update({ speedKmh, powerNotch, maxPowerNotch, brakeNotch, maxBrakeNotch, isEB }) {
-    const t = this.ctx.currentTime;
-    const v = Math.max(0, speedKmh || 0);
-    const normSpeed = Math.min(1, v / 120); // 0~120km/h 기준
+  // [핵심] 미쓰비시 GTO 패턴 계산 함수
+  getMitsubishiPattern(speed) {
+    // speed: km/h
+    // 반환값: { cFreq: 캐리어주파수, mFreq: 변조주파수, depth: 변조깊이, vol: 볼륨 }
+    
+    // 기본 모터 주파수 (속도에 비례)
+    const fundamental = speed * 3.5; 
 
-    // ========== 0. 완전 정지면 깔끔하게 무음 ==========
-    if (v < 0.2) {
-      // 속도 거의 0이면 어떤 노치든 소리 OFF
-      this.toneGain.gain.setTargetAtTime(0, t, 0.12);
-      this.master.gain.setTargetAtTime(0, t, 0.25);
-      this.modGain.gain.setTargetAtTime(0, t, 0.12);
+    let cFreq, mFreq, depth, volMix;
 
-      this.lastMode = "none";
-      this.currentPowerNotch = 0;
-      this.currentBrakeNotch = 0;
-      this.prevCFreq = 0;
-      this.prevMFreq = 0;
-      this.prevVol = 0;
-      return;
+    // === 미쓰비시 GTO 변조 패턴 시뮬레이션 ===
+    if (speed < 12) {
+      // [비동기 구간 1] 초기 기동음 (높게 시작해서 상승)
+      // 윙~~~~ (점점 높아짐)
+      cFreq = 400 + (speed * 25); 
+      mFreq = fundamental; 
+      depth = 100; 
+      volMix = 1.0; 
+    } else if (speed < 28) {
+      // [비동기 구간 2] 변속 충격 (Pitch Drop) 후 다시 상승
+      // 뚝 떨어졌다가 다시 윙~~~~
+      // 여기서 GTO 특유의 지글거림이 강함
+      cFreq = 250 + ((speed - 12) * 30);
+      mFreq = fundamental;
+      depth = 130; // 변조를 강하게 줘서 거칠게
+      volMix = 0.9;
+    } else if (speed < 45) {
+      // [동기 변조 구간] 넓은 스텝 (Synchronous Mode)
+      // 하모닉스가 정수배로 고정됨
+      const harmonicRatio = 9; // 9펄스 근사
+      cFreq = fundamental * harmonicRatio;
+      mFreq = fundamental; 
+      depth = fundamental * 2; // 속도 비례 변조
+      volMix = 0.8;
+    } else if (speed < 60) {
+      // [3펄스 구간]
+      const harmonicRatio = 3;
+      cFreq = fundamental * harmonicRatio;
+      mFreq = fundamental;
+      depth = fundamental * 0.8;
+      volMix = 0.7;
     } else {
-      // 움직이고 있을 때는 마스터 볼륨 켜두기
-      this.master.gain.setTargetAtTime(0.4, t, 0.25);
+      // [1펄스 구간] 고속 (순수 모터음)
+      // 변조음은 거의 사라지고 모터 회전음(Fundamental)만 남음
+      cFreq = fundamental;
+      mFreq = fundamental; 
+      depth = 0; // 변조 없음
+      volMix = 0.6; // 고속에서는 인버터 소리보다 바람소리가 커지므로 볼륨 줄임
     }
 
-    // ========== 1. 모드 결정 ("power", "brake", "eb", "coast") ==========
-    let mode = "coast"; // 기본은 코스팅(0단 주행)
+    return { cFreq, mFreq, depth, volMix };
+  }
 
+  update({ speedKmh, powerNotch, maxPowerNotch, brakeNotch, maxBrakeNotch, isEB }) {
+    const t = this.ctx.currentTime;
+    const v = Math.max(0, speedKmh || 0);
+    const normSpeed = Math.min(1, v / 120);
+
+    // ========== 0. 정지 처리 ==========
+// ========== 0. 정지 처리 (수정됨) ==========
+    // [핵심 변경] 노치 상태(powerNotch, brakeNotch)를 확인하던 조건을 삭제했습니다.
+    // 속도가 0.3km/h 미만이면 무조건 소리를 부드럽게 차단합니다.
+    if (v < 0.3) {
+      // 1. 모터 구동음 차단 (빠르게)
+      this.toneGain.gain.setTargetAtTime(0, t, 0.05);
+      this.subGain.gain.setTargetAtTime(0, t, 0.05);
+      
+      // 2. 주행 소음 차단 (약간의 여운을 두고)
+      this.rumbleGain.gain.setTargetAtTime(0, t, 0.2); 
+      this.hissGain.gain.setTargetAtTime(0, t, 0.2);
+
+      // 3. 변조 깊이 초기화 (다시 출발할 때 깔끔하게 시작하기 위함)
+      this.modGain.gain.setTargetAtTime(0, t, 0.1);
+      
+      this.lastMode = "none";
+      this.prevSpeed = v;
+      return; // 아래의 소리 계산 로직을 수행하지 않고 함수 종료
+    }
+
+    // ========== 1. 모드 파악 ==========
+    let mode = "coast";
     if (isEB) mode = "eb";
     else if (powerNotch > 0) mode = "power";
     else if (brakeNotch > 0) mode = "brake";
-    // powerNotch, brakeNotch 둘 다 0이면서 v>0 ⇒ "coast" 유지
 
-    const POWER_TABLE = [
-      { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 }, // N
-      { vol: 0.20, baseMul: 1.0, modMul: 7.0, depth: 130 }, // P1
-      { vol: 0.27, baseMul: 1.1, modMul: 8.0, depth: 180 }, // P2
-      { vol: 0.33, baseMul: 1.2, modMul: 9.0, depth: 230 }, // P3
-      { vol: 0.39, baseMul: 1.3, modMul: 9.8, depth: 280 }, // P4
-      { vol: 0.45, baseMul: 1.4, modMul:10.6, depth: 330 }, // P5
-    ];
-
-    const BRAKE_TABLE = [
-      { vol: 0.00, baseMul: 0.0, modMul: 0.0, depth: 0 }, // N
-      { vol: 0.16, baseMul: 0.9, modMul: 5.0, depth: 110 }, // B1
-      { vol: 0.20, baseMul: 0.9, modMul: 5.5, depth: 140 }, // B2
-      { vol: 0.24, baseMul: 0.95,modMul: 6.0, depth: 170 }, // B3
-      { vol: 0.28, baseMul: 1.0, modMul: 6.5, depth: 200 }, // B4
-      { vol: 0.32, baseMul: 1.0, modMul: 7.0, depth: 230 }, // B5 
-    ];
-
-    const pMax = maxPowerNotch || 5;
-    const bMax = maxBrakeNotch || 8;
-
+    // ========== 2. 사운드 패턴 계산 (미쓰비시 로직 적용) ==========
+    const pattern = this.getMitsubishiPattern(v);
+    
+    // 모드에 따른 볼륨 조절
     let targetVol = 0;
-    let baseMul = 1.0;
-    let modMul = 0.0;
-    let depth = 0;
+    let targetSubVol = 0;
 
-    // ========== 2. 모드별 프로파일 결정 ==========
-if (mode === "power") {
-  const pn = Math.max(1, Math.min(pMax, powerNotch || 0));
-  const idx = Math.min(POWER_TABLE.length - 1, pn);
-  const P = POWER_TABLE[idx];
-
-  baseMul = P.baseMul;
-  modMul = P.modMul;
-  depth = P.depth;
-
-  // ----------- 저속 3단계 squeal boost (power 전용) ----------
-let squealBoost = 1.0;
-
-if (v < 10) {
-  // 0~10 km/h : 구동 초기 금속 진동 감쇠
-  const f = 1 - v / 10;
-  modMul *= (1.0 - 0.90 * f);
-  depth  *= (1.0 - 0.60 * f);
-  squealBoost = 1.0 - 0.15 * f;
-
-} else if (v < 15) {
-  // 10~15 km/h : 초기 진동 점진적 안정화
-  const f = 1 - (v - 10) / 5;
-  modMul *= (1.0 - 0.75 * f);
-  depth  *= (1.0 - 0.50 * f);
-  squealBoost = 1.0 - 0.11 * f;
-
-} else if (v < 20) {
-  // 15~20 km/h : 회전 공진 약화
-  const f = 1 - (v - 15) / 5;
-  modMul *= (1.0 - 0.60 * f);
-  depth  *= (1.0 - 0.35 * f);
-  squealBoost = 1.0 - 0.07 * f;
-
-} else if (v < 25) {
-  // 20~25 km/h : 모터/차륜 안정화
-  const f = 1 - (v - 20) / 5;
-  modMul *= (1.0 - 0.40 * f);
-  depth  *= (1.0 - 0.22 * f);
-  squealBoost = 1.0 - 0.05 * f;
-
-} else if (v < 30) {
-  // 25~30 km/h : 기본 VVVF 톤으로 거의 수렴
-  const f = 1 - (v - 25) / 5;
-  modMul *= (1.0 - 0.25 * f);
-  depth  *= (1.0 - 0.12 * f);
-  squealBoost = 1.0 - 0.03 * f;
-
-} else if (v < 35) {
-  // 30~35 km/h : 미세 보정 (거의 1에 가까움)
-  const f = 1 - (v - 30) / 5;  // 35→30 → 0→1
-  modMul *= (1.0 - 0.12 * f);
-  depth  *= (1.0 - 0.06 * f);
-  squealBoost = 1.0 - 0.015 * f;
-}
-
-  // speed 의존 가속음 볼륨
-  targetVol = (P.vol * (0.30 + normSpeed * 0.7)) * squealBoost;
-}
-    else if (mode === "brake" || mode === "eb") {
-      const bn = Math.max(1, Math.min(bMax, brakeNotch || (mode === "eb" ? bMax : 1)));
-      const idx = Math.min(BRAKE_TABLE.length - 1, bn);
-      const B = BRAKE_TABLE[idx];
-
-      baseMul = B.baseMul;
-      modMul = B.modMul;
-      depth = B.depth;
-
-      let strength = bn / bMax;
-      if (mode === "eb") {
-        strength = 1.1;
-        depth *= 1.3;
-      }
-
-      // 저속일수록 끼이익 강조
-      let squealBoost = 1.0;
-      if (v < 20) {
-        const f = 1 - v / 30; // 30→0 에서 0→1
-        modMul *= (1.0 + 1.8 * f);
-        depth *= (1.0 + 1.5 * f);
-        squealBoost = 1.0 + 0.4 * f;
-      }
-
-      targetVol = (0.18 + 0.28 * strength) * squealBoost;
-    }
-    else if (mode === "coast") {
-  // 📌 기본 사운드 성격: 가속보다 저음·풍성함 쪽으로
-  const speedFactor = Math.max(0.35, normSpeed); // 너무 작은 값이면 너무 얌전하니 바닥 올려줌
-
-  // 기본 모터음 계열은 조금 더 낮게, 둔탁하게
-  baseMul = 0.95; // 0.6 → 0.55 : 톤 살짝 더 낮춤
-
-  // 스위칭음은 살짝만, 대신 속도에 따라 자연스럽게 변조
-  modMul = 2.4 + 2.0 * speedFactor; // 3.0 + 2.3x → 2.4 + 2.0x : 고역 줄이고 바디감
-
-  // FM 깊이 높여서 “풍성한” 질감
-  depth = 40 + 140 * speedFactor; // 40+70x → 80+140x : 훨씬 리치해짐
-
-  // 볼륨도 coast 치고는 꽤 크게 (가속보다 약간 아래정도)
-  targetVol = 0.10 + 0.26 * speedFactor; // 0.03+0.10x → 0.10+0.26x
-}
-    // ========== 3. 저속 보정 (v<15일 때 전체적으로 줄이기) ==========
-const lowSpeedFactor = v < 5 ? (v / 5) : 1;
-depth *= lowSpeedFactor;
-targetVol *= lowSpeedFactor;
-
-// 🔉 고속 볼륨 감쇠
-let highSpeedFactor = 1.0;
-if (v > 40) {
-  const over = Math.min(v, 90) - 40; // 0 ~ 80
-  highSpeedFactor = 1.0 - (over / 100) * 0.5; // 60 → 1.0, 140 → 0.5
-}
-targetVol *= highSpeedFactor;
-  // ========== 4. 실제 주파수 계산 ==========
-    // vvvf 주파수 포화 (real train behavior)
-    let adjV;
-
-    // 0~90km/h까지 자연스럽게 증가하는 포화형
-    const vNorm = Math.min(v, 90) / 90;       // 0~1
-    adjV = 45 * (1 - Math.exp(-3 * vNorm));   // 최대 약 45 근처에서 포화
-
-    const baseMotor = 35 + adjV * 2.2;
-    const cFreq = baseMotor * baseMul;
-    const mFreq = baseMotor * modMul;
-
-    const prevC = this.prevCFreq || cFreq || 0;
-    const prevM = this.prevMFreq || mFreq || 0;
-    const prevV = this.prevVol || 0;
-
-    // 모드에 따른 램프 시간: P→N으로 놓는 순간은 좀 더 길게
-    const fromPowerToCoast =
-      (this.lastMode === "power" && mode === "coast");
-
-    const freqRamp = fromPowerToCoast ? 0.45 : 0.12; // 주파수 글라이드 시간 증가
-    const volRamp = fromPowerToCoast ? 0.55 : 0.12; // 볼륨 감소를 더 천천히
-
-    // 부드러운 주파수 전환 (exponential ramp)
-    if (mode === "coast" || mode === "power" || mode === "brake" || mode === "eb") {
-      if (cFreq > 0) {
-        this.carrier.frequency.setValueAtTime(prevC, t);
-        // exponential ramp 적용
-        this.carrier.frequency.setTargetAtTime(cFreq, t + freqRamp, 0.1); // 0.1은 부드럽게 변하는 비율
-      }
-      if (mFreq > 0) {
-        this.modulator.frequency.setValueAtTime(prevM, t);
-        // exponential ramp 적용
-        this.modulator.frequency.setTargetAtTime(mFreq, t + freqRamp, 0.1); // 0.1은 부드럽게 변하는 비율
-      }
-      this.modGain.gain.setTargetAtTime(depth, t, 0.05);
-      this.toneGain.gain.setTargetAtTime(targetVol, t, volRamp);
+    if (mode === "power") {
+      targetVol = pattern.volMix * 0.5;
+      // 1펄스(고속) 영역에서 서브 오실레이터 강화 (웅장한 모터 소리)
+      if (v > 50) targetSubVol = 0.3;
+    } else if (mode === "brake" || mode === "eb") {
+      // 회생제동 시 고주파가 더 찢어지게 들림
+      targetVol = pattern.volMix * 0.55; 
+      if (isEB) targetVol *= 1.2;
     } else {
-      // 이 else는 사실상 안 들어옴 (v>=0.2 & 노치 구성상 항상 위 모드 중 하나)
-      this.toneGain.gain.setTargetAtTime(0, t, 0.10);
-      this.modGain.gain.setTargetAtTime(0, t, 0.10);
+      // 타행(Coast) 시에는 인버터 소리가 거의 안 들리거나 매우 작음
+      targetVol = 0.05; 
+      // 타행 시에는 모터 구동음(Sub)만 살짝 들림
+      targetSubVol = v > 10 ? 0.1 : 0;
     }
 
-    // ========== 5. jerk (노치/모드 전환 순간만) ==========
+    // ========== 3. 물리적 소음 시뮬레이션 (현실성 강화) ==========
+    
+    // (1) 바닥 소음 (Rumble): 속도에 비례, 저역 통과 필터 열림
+    const rumbleVol = Math.min(0.6, 0.05 + normSpeed * 0.8);
+    this.rumbleGain.gain.setTargetAtTime(rumbleVol, t, 0.5);
+    // 속도가 빠를수록 바닥 소음의 톤이 올라감
+    this.rumbleFilter.frequency.setTargetAtTime(60 + normSpeed * 400, t, 0.5);
+
+    // (2) 바람 소리 (Hiss): 고속에서 급격히 증가
+    let hissVol = 0;
+    if (v > 20) {
+      hissVol = Math.pow((v - 20) / 100, 2) * 0.6;
+    }
+    this.hissGain.gain.setTargetAtTime(hissVol, t, 0.5);
+    
+    // (3) 모터 필터 공진 변화: 전력이 많이 들어가면 더 날카롭게 움
+    const loadFactor = (powerNotch / (maxPowerNotch || 5)) || (brakeNotch / (maxBrakeNotch || 8)) || 0;
+    const filterFreq = 250 + loadFactor * 250; // 부하가 걸리면 필터가 열림 250~300 추천
+    this.motorFilter.frequency.setTargetAtTime(filterFreq, t, 0.2);
+
+
+    // ========== 4. 오실레이터 적용 ==========
+    
+    // 주파수 적용 (급격한 변화 방지용 Ramp)
+    // 미쓰비시는 변속 충격이 있으므로 ramp 시간을 짧게 잡음 (0.05)
+    this.carrier.frequency.setTargetAtTime(pattern.cFreq, t, 0.05);
+    this.modulator.frequency.setTargetAtTime(pattern.mFreq, t, 0.05);
+    
+    // 변조 깊이 적용
+    this.modGain.gain.setTargetAtTime(pattern.depth, t, 0.05);
+
+    // 메인 톤 볼륨
+    this.toneGain.gain.setTargetAtTime(targetVol, t, 0.1);
+
+    // 서브 톤(순수 모터음) 볼륨 및 주파수
+    this.subOsc.frequency.setTargetAtTime(pattern.mFreq, t, 0.1); // 모터 기본 주파수
+    this.subGain.gain.setTargetAtTime(targetSubVol, t, 0.2);
+
+
+    // ========== 5. Jerk (과도 응답 - 덜컹거림) ==========
+    // 노치 변경 시 순간적으로 '툭' 하는 느낌
     const pnNow = Math.max(0, powerNotch || 0);
     const bnNow = Math.max(0, brakeNotch || 0);
-    const notchChanged =
-      pnNow !== this.currentPowerNotch || bnNow !== this.currentBrakeNotch;
-
-    const shouldJerk =
-      (mode === "power" || mode === "brake" || mode === "eb") && notchChanged;
-
-    if (shouldJerk) {
-      this.transient.gain.cancelScheduledValues(t);
-      this.transient.gain.setValueAtTime(1.0, t);
-      this.transient.gain.setTargetAtTime(1.0, t + 0.04, 0.06);
-
-      if (cFreq > 0) {
-        this.carrier.frequency.setValueAtTime(cFreq * 0.95, t);
-        this.carrier.frequency.linearRampToValueAtTime(cFreq * 1.05, t + 0.03);
-        this.carrier.frequency.setTargetAtTime(cFreq, t + 0.04, 0.05);
-      }
-      if (mFreq > 0) {
-        this.modulator.frequency.setValueAtTime(mFreq * 0.95, t);
-        this.modulator.frequency.linearRampToValueAtTime(mFreq * 1.05, t + 0.03);
-        this.modulator.frequency.setTargetAtTime(mFreq, t + 0.04, 0.05);
+    
+    if (this.currentPowerNotch !== pnNow || this.currentBrakeNotch !== bnNow) {
+      if (mode !== "coast") {
+         // 게인을 순간적으로 튀게 함
+         this.transient.gain.cancelScheduledValues(t);
+         this.transient.gain.setValueAtTime(1.5, t); 
+         this.transient.gain.setTargetAtTime(1.0, t + 0.1, 0.1);
       }
     }
 
     this.lastMode = mode;
     this.currentPowerNotch = pnNow;
     this.currentBrakeNotch = bnNow;
-
-    this.prevCFreq = cFreq || prevC;
-    this.prevMFreq = mFreq || prevM;
-    this.prevVol = targetVol || prevV;
+    this.prevSpeed = v;
   }
 }
 
