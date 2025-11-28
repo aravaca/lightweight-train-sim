@@ -2150,12 +2150,12 @@ function buildCabOverlay(layoutKey) {
     const bW = ladderW - pad * 2;
     const x = ladderX + pad;
     if (vehicle.name.toLowerCase().includes("e233")) {
-    const rotateAngle = 3; // 원하는 각도 (예: 10도)
-const centerX = ladderX + ladderW / 2; // 회전 중심 X
-const centerY = ladderY + ladderH / 2; // 회전 중심 Y
+      const rotateAngle = 3; // 원하는 각도 (예: 10도)
+      const centerX = ladderX + ladderW / 2; // 회전 중심 X
+      const centerY = ladderY + ladderH / 2; // 회전 중심 Y
 
-// ladderGroup에 회전 transform 추가
-ladderGroup.setAttribute("transform", `rotate(${rotateAngle} ${centerX} ${centerY})`);
+      // ladderGroup에 회전 transform 추가
+      ladderGroup.setAttribute("transform", `rotate(${rotateAngle} ${centerX} ${centerY})`);
     }
 
     const normalBlocks = []; // B1~B(EB-1) 사각형
