@@ -4784,7 +4784,7 @@ ws.onmessage = (ev) => {
     const veh_name = vehicle.name.toLowerCase();
 
     // 1. 차량 이름에 따른 엔진 식별 문자열(Key) 설정
-    if (veh_name.includes("ktx")) {
+    if (veh_name.includes("ktx") || veh_name.includes("ef510")) {
       ensureVVVFEngine("KTX");
     } 
     else if (veh_name.includes("n700s")) {
