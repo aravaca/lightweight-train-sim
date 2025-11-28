@@ -3970,12 +3970,12 @@ class Line3IGBT extends VVVFPattern {
     if (mode !== "brake" && mode !== "eb") {
 
       if (v < 3) {
-        cFreq = 2500;
+        cFreq = 800;
         mFreq = fundamental;
         depth = 100;
         volMix = 0.8;
       } else if (v < 20) {
-        cFreq = 2500 + v * 7;
+        cFreq = 800 + v * 7;
         mFreq = fundamental;
         depth = 120;
         volMix = 0.9;
@@ -4039,20 +4039,21 @@ if (mode === "brake" || mode === "eb") {
     volMix = 1.6;           
   }
 
-  // 4) 극저속/정차 직전: 회생제동 실효 구간 ('툭... 웅...' 셧다운 느낌)
-  // 실차 특징: 모터의 자력이 풀리면서 나는 웅장한 저음 + 급격한 피치 드랍
-  else if (v > 0.5) {
-    // 350Hz -> 100Hz. 아주 급격하게 바닥으로 떨어짐
-    cFreq = 80 + (v * 30);  
-    mFreq = fundamental * 0.5; // Sub-bass 대역을 강조하여 무게감 형성
-    depth = 255;            // 최대 변조로 '덜덜거리는' 느낌 극대화
-    volMix = 1.2;           // 정차 순간의 임팩트를 위해 볼륨 최대
-  } 
+  // // 4) 극저속/정차 직전: 회생제동 실효 구간 ('툭... 웅...' 셧다운 느낌)
+  // // 실차 특징: 모터의 자력이 풀리면서 나는 웅장한 저음 + 급격한 피치 드랍
+  // else if (v > 0.5) {
+  //   // 350Hz -> 100Hz. 아주 급격하게 바닥으로 떨어짐
+  //   cFreq = 80 + (v * 30);  
+  //   mFreq = fundamental * 0.5; // Sub-bass 대역을 강조하여 무게감 형성
+  //   depth = 255;            // 최대 변조로 '덜덜거리는' 느낌 극대화
+  //   volMix = 1.2;           // 정차 순간의 임팩트를 위해 볼륨 최대
+  // } 
   
   // 완전 정차 시 (노이즈 제거)
   else {
-    cFreq = 0;
-    volMix = 0;
+    cFreq = 350;
+    depth = 180;
+    volMix = 0.7;
   }
 
   return { cFreq, mFreq, depth, volMix };
@@ -4211,7 +4212,7 @@ class VVVFEngine {
     this.hissGain.gain.setTargetAtTime(hissVol, t, 0.5);  // 바람 소리 볼륨 조절
 
     const loadFactor = (powerNotch / (maxPowerNotch || 5)) || (brakeNotch / (maxBrakeNotch || 8)) || 0;
-    const filterFreq = 200 + loadFactor * 200;
+    const filterFreq = 200 + loadFactor * 200; //200~500추천
     this.motorFilter.frequency.setTargetAtTime(filterFreq, t, 0.2);
 
     // 오실레이터 적용 (패턴에서 온 값으로)
