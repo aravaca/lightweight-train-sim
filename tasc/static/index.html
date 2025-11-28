@@ -4185,10 +4185,10 @@ class VVVFEngine {
     let targetVol = 0;
     let targetSubVol = 0;
     if (mode === "power") {
-      targetVol = pattern.volMix * 0.3; //마스터 파워 볼륨은 여기
+      targetVol = pattern.volMix * 0.25; //마스터 파워 볼륨은 여기
       if (v > 50) targetSubVol = 0.2;
     } else if (mode === "brake" || mode === "eb") {
-      targetVol = pattern.volMix * 0.25;//마스터 제동 볼륨은 여기
+      targetVol = pattern.volMix * 0.20;//마스터 제동 볼륨은 여기
       if (isEB) targetVol *= 1.2;
     } else {
       targetVol = 0.05; //마스터 coasting 볼륨은 여기
