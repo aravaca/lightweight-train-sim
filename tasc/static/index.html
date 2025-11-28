@@ -2661,7 +2661,7 @@ function maybeSpawnEmergencyObstacle(initialDist) {
   // 조건 부족하면 생성 안 함
   if (!initialDist || initialDist <= 20) return;
 
-  if (Math.random() > 0.30) return;
+  if (Math.random() > 0.20) return;
 
   // 140m ~ 210m 사이에서만 장애물 위치 선택
   const minRange = 140;
@@ -4147,7 +4147,7 @@ class VVVFEngine {
     
     // (3) 모터 필터 공진 변화: 전력이 많이 들어가면 더 날카롭게 움
     const loadFactor = (powerNotch / (maxPowerNotch || 5)) || (brakeNotch / (maxBrakeNotch || 8)) || 0;
-    const filterFreq = 500 + loadFactor * 500; // 부하가 걸리면 필터가 열림 300(듣기좋지만 먹먹함)~500(리얼함) 추천
+    const filterFreq = 1000 + loadFactor * 1000; // 300(듣기좋지만 먹먹함)~1000(리얼함) 추천
     this.motorFilter.frequency.setTargetAtTime(filterFreq, t, 0.2);
 
 
