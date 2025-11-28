@@ -1621,7 +1621,7 @@ function handleObstacleState(st) {
             <option value="3000">서울교통공사 3000호대 VVVF 전동차</option>
             <option value="N700S">신칸센 N700S계</option> 
             <option value="100000">한국철도공사 100000호대 전동차</option> 
-            <!-- <option value="EF510">EF510형 전기기관차 + E26계 객차</option>  -->
+            <option value="EF510">EF510형 전기기관차 + E26계 객차</option> 
             <option value="GE999">초차원기관 보일러 GR-0999-SV</option> 
           </select>
         </label>
@@ -3039,14 +3039,15 @@ window.rebuildLeftPoles = rebuildLeftPoles;
   wire1.castShadow = false;
   scene.add(wire1);
 
+  leftHeightOffset = 0.1;
   // 2번 선로 위 전선 (x ≈ 4)
   const wire2 = new THREE.Mesh(wireGeo, wireMat);
-  wire2.position.set(3, wireY, wireZMid);
+  wire2.position.set(3.4, wireY + leftHeightOffset + 0.2, wireZMid);
   wire2.rotation.x = Math.PI / 2;
   wire2.castShadow = false;
   scene.add(wire2);
 
-  poleOffset = 0.9
+  poleOffset = 0.7
   // 3번 선로 위 전선 (x ≈ 0)
   const wire3 = new THREE.Mesh(wireGeo, wireMat);
   wire3.position.set(0.5, wireY - poleOffset, wireZMid);
@@ -3056,7 +3057,7 @@ window.rebuildLeftPoles = rebuildLeftPoles;
 
   // 4번 선로 위 전선 (x ≈ 4)
   const wire4 = new THREE.Mesh(wireGeo, wireMat);
-  wire4.position.set(3, wireY - poleOffset, wireZMid);
+  wire4.position.set(3.4, wireY - poleOffset + leftHeightOffset, wireZMid);
   wire4.rotation.x = Math.PI / 2;
   wire4.castShadow = false;
   scene.add(wire4);
