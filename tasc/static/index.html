@@ -3957,61 +3957,107 @@ class N700SMitsubishiFullSiC extends VVVFPattern {
   }
 }
 
-// 3호선 현대로템 IGBT (IPM 계열 가정)
-// 특징: 흔히 "뱀눈이"나 신형 전동차에서 들리는, 고음에서 시작해 뚝 떨어지거나 부드럽게 모터음으로 이어지는 소리
 class Line3IGBT extends VVVFPattern {
   getPattern(speed, mode) {
     const v = Math.max(0, speed);
     const fundamental = getFund(v, 3.0);
-    
+
     let cFreq, mFreq, depth, volMix;
 
-    // 1. 기동음 (출발 시)
-    if (v < 3) {
-      cFreq = 2500; // 기동 시 고주파 (2~3kHz)
-      mFreq = fundamental;
-      depth = 100; // 깊은 변조, 아직 "찌이이잉" 소리
-      volMix = 0.8; // 다소 큰 소리, 기동 시
-    }
-    // 2. 비동기 영역 (속도 증가, 캐리어는 조금씩 변함)
-    else if (v < 20) {
-      // 비동기 구간: 고주파가 일정하게 변화, 기차가 점차 속도를 올리며 소리가 약간 낮아짐
-      cFreq = 2500 + (v * 7); // 점진적으로 고주파 증가
-      mFreq = fundamental;
-      depth = 120; // 변조 깊이가 깊어지고, 소리가 점차 부드러워짐
-      volMix = 0.9; // 소리가 조금 더 강해짐
-    }
-    // 3. 동기 모드 진입 (Over-modulation)
-    else if (v < 35) {
-      // 동기 모드: 캐리어가 기본파의 정수배로 고정되어 뚝 떨어짐
-      cFreq = fundamental * 11; // 11배로 동기화
-      mFreq = fundamental;
-      depth = 100; // 기본적인 깊이, 변조가 자연스러움
-      volMix = 0.8; // 중간 볼륨
-    }
-    // 4. 고속 영역 (55km/h 이상)
-    else if (v < 55) {
-      cFreq = fundamental * 5; // 고속 영역에서 소리가 줄어들며 부드럽게 변함
-      mFreq = fundamental;
-      depth = 80; // 깊이는 줄어들지만, 여전히 잘 들리는 모터음
-      volMix = 0.75; // 소리가 조금 줄어듬
-    } 
-    // 5. 초고속 영역 (속도 >= 55)
-    else {
-      cFreq = fundamental; // 1펄스 주파수로 동작
-      mFreq = fundamental;
-      depth = 40; // 고속에서는 소리가 매우 부드럽고 낮아짐
-      volMix = 0.6; // 소리가 매우 정숙해짐
+    // ---------------------------
+    //   일반 가속 패턴 (현재 유지)
+    // ---------------------------
+    if (mode !== "brake" && mode !== "eb") {
+
+      if (v < 3) {
+        cFreq = 2500;
+        mFreq = fundamental;
+        depth = 100;
+        volMix = 0.8;
+      } else if (v < 20) {
+        cFreq = 2500 + v * 7;
+        mFreq = fundamental;
+        depth = 120;
+        volMix = 0.9;
+      } else if (v < 35) {
+        cFreq = fundamental * 11;
+        mFreq = fundamental;
+        depth = 100;
+        volMix = 0.8;
+      } else if (v < 55) {
+        cFreq = fundamental * 5;
+        mFreq = fundamental;
+        depth = 80;
+        volMix = 0.75;
+      } else {
+        cFreq = fundamental;
+        mFreq = fundamental;
+        depth = 40;
+        volMix = 0.6;
+      }
+
+      return { cFreq, mFreq, depth, volMix };
     }
 
-    // 제동 시 고주파음 강조 (회생제동 시 특징)
-    if (mode === "brake" || mode === "eb") {
-      cFreq = Math.max(cFreq, 2000 + (v * 2)); // 제동 시 고주파가 강조됨
-      depth *= 1.5; // 깊이가 증가하여 제동 소리가 강해짐
-      volMix *= 1.2; // 제동 시 소리 크기 증가
-    }
+    // ---------------------------
+    //         제동 패턴
+    // ---------------------------
+    // 실제 차량에 가까운 4-구간 모델
+    // ---------------------------
+// 제동 패턴 (3호선 현대 로템 IGBT VVVF 시뮬레이션)
+if (mode === "brake" || mode === "eb") {
 
-    return { cFreq, mFreq, depth, volMix };
+  // 1) 고속 영역: 비동기 PWM 구간 (날카로운 '쉬이이잉-' 고주파 유지 후 하강)
+  // 실차 특징: 속도가 줄어도 피치가 급격히 떨어지지 않고 고음을 유지하다가 50km/h 부근부터 꺾임
+  if (v > 55) {
+    // 속도가 빠를수록 피치 변화가 적고, 일정 대역(1800~2000Hz) 유지
+    cFreq = 1850 + (v * 2.5); 
+    mFreq = fundamental; 
+    depth = 220;            // 찢어지는 듯한 고음 공진 강화
+    volMix = 1.3;           // 고속 주행 소음에 묻히지 않게
+  }
+
+  // 2) 중속 영역: 변조 모드 변경 구간 (급격한 '우우우웅↘' 하강)
+  // 실차 특징: 피치가 선형보다 더 가파르게 떨어지는 구간 (Audible Drop)
+  else if (v > 25) {
+    // 55km/h에서 25km/h로 갈 때 1800Hz -> 700Hz 대역으로 급격히 다운
+    // (v - 25)의 제곱 성분을 약간 섞어 곡선형 하강 유도
+    cFreq = 700 + ((v - 25) * 38); 
+    mFreq = fundamental * 1.1; // 약간의 불협화음(Discomfort)을 섞어 기계적 소음 강조
+    depth = 200;
+    volMix = 1.5;           // 제동음이 가장 매력적으로 들리는 구간
+  }
+
+  // 3) 저속 영역: 동기 PWM 진입 (특유의 '그르르' 거친 질감)
+  // 실차 특징: 3펄스/1펄스 등 스위칭 횟수가 줄어들며 소리가 굵어짐
+  else if (v > 8) {
+    // 700Hz -> 350Hz. 떨어지는 속도는 완만해지지만 떨림(Tremolo)이 강해짐
+    cFreq = 350 + ((v - 8) * 20); 
+    mFreq = fundamental; 
+    depth = 180;
+    // 떨림 효과를 위해 volume에 미세한 진동을 주는 로직이 있다면 여기서 활성화 추천
+    volMix = 1.6;           
+  }
+
+  // 4) 극저속/정차 직전: 회생제동 실효 구간 ('툭... 웅...' 셧다운 느낌)
+  // 실차 특징: 모터의 자력이 풀리면서 나는 웅장한 저음 + 급격한 피치 드랍
+  else if (v > 0.5) {
+    // 350Hz -> 100Hz. 아주 급격하게 바닥으로 떨어짐
+    cFreq = 80 + (v * 30);  
+    mFreq = fundamental * 0.5; // Sub-bass 대역을 강조하여 무게감 형성
+    depth = 255;            // 최대 변조로 '덜덜거리는' 느낌 극대화
+    volMix = 1.2;           // 정차 순간의 임팩트를 위해 볼륨 최대
+  } 
+  
+  // 완전 정차 시 (노이즈 제거)
+  else {
+    cFreq = 0;
+    volMix = 0;
+  }
+
+  return { cFreq, mFreq, depth, volMix };
+}
+
   }
 }
 
@@ -4784,7 +4830,7 @@ ws.onmessage = (ev) => {
     const veh_name = vehicle.name.toLowerCase();
 
     // 1. 차량 이름에 따른 엔진 식별 문자열(Key) 설정
-    if (veh_name.includes("ktx") || veh_name.includes("ef510")) {
+    if (veh_name.includes("ktx") || veh_name.includes("ef510") || veh_name.includes("e26")) {
       ensureVVVFEngine("KTX");
     } 
     else if (veh_name.includes("n700s")) {
