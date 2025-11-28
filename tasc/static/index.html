@@ -4053,7 +4053,7 @@ if (mode === "brake" || mode === "eb") {
   else {
     cFreq = 350;
     depth = 180;
-    volMix = 0.7;
+    volMix = 0.1;
   }
 
   return { cFreq, mFreq, depth, volMix };
@@ -4185,8 +4185,8 @@ class VVVFEngine {
     let targetVol = 0;
     let targetSubVol = 0;
     if (mode === "power") {
-      targetVol = pattern.volMix * 0.2; //마스터 볼륨은 여기
-      if (v > 50) targetSubVol = 0.3;
+      targetVol = pattern.volMix * 0.3; //마스터 볼륨은 여기
+      if (v > 50) targetSubVol = 0.2;
     } else if (mode === "brake" || mode === "eb") {
       targetVol = pattern.volMix * 0.25;
       if (isEB) targetVol *= 1.2;
@@ -4212,7 +4212,7 @@ class VVVFEngine {
     this.hissGain.gain.setTargetAtTime(hissVol, t, 0.5);  // 바람 소리 볼륨 조절
 
     const loadFactor = (powerNotch / (maxPowerNotch || 5)) || (brakeNotch / (maxBrakeNotch || 8)) || 0;
-    const filterFreq = 200 + loadFactor * 200; //200~500추천
+    const filterFreq = 500 + loadFactor * 500; //200~500추천
     this.motorFilter.frequency.setTargetAtTime(filterFreq, t, 0.2);
 
     // 오실레이터 적용 (패턴에서 온 값으로)
