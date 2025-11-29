@@ -615,7 +615,8 @@ class StoppingSim:
             st.lever_notch = 0
         elif name == "emergencyBrake":
             st.lever_notch = self.veh.notches - 1
-            self.eb_used = True
+            if st.v > 0:
+                self.eb_used = True
         elif name == "setNotch":
             st.lever_notch = self._clamp_notch(val)
 

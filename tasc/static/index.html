@@ -1742,7 +1742,7 @@ function handleObstacleState(st) {
       <aside class="overlay-preview" aria-label="Selected train preview">
         <div class="preview-image-frame">
           <!-- 기본 썸네일 (초기값) – JS에서 trainSeries 선택 시 교체 -->
-          <img id="trainPreviewImg" src="/static/e233_1000.png" alt="Train preview">
+          <img id="trainPreviewImg" src="/static/emu_db/e233_1000.png" alt="Train preview">
         </div>
 
         <div class="preview-title" id="trainPreviewName" style="font-family: 'A-OTF Shin Go Pro', sans-serif; font-style: normal; font-weight: 700; ">
@@ -3767,7 +3767,7 @@ class BveSoundEngine {
   constructor(ctx) {
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = 4.0; // Master volume
+    this.master.gain.value = 3.0; // Master volume
     this.master.connect(ctx.destination);
 
     // CSV tables: { speed -> { wavName -> value } }
@@ -4405,6 +4405,9 @@ async function initializeBveEngine() {
       // Also load a default horn (HornB) for H key playback
       await bveSoundEngine.loadHornSound("/static/E233/ExternalData/Sound/Horn/HornB.wav");
 
+      // Load air-down sounds used for brake transitions
+      await loadAirSounds();
+
       // Load notch sound effect
       await loadNotchSound();
 
@@ -4991,6 +4994,9 @@ function formatTimeSec(secInt) {
 // ===== Notch Sound Effect =====
 let notchSoundFile = null;
 let lastNotchValue = null; // 마지막 노치 값 기록
+let airDownZeroFile = null;
+let airDownEBFile = null;
+let airUpFile = null;
 async function loadNotchSound() {
   try {
     const response = await fetch('/static/audio/notch.mp3', { cache: 'no-store' });
@@ -5002,6 +5008,44 @@ async function loadNotchSound() {
   } catch (err) {
     console.debug("notch.mp3 load error:", err);
   }
+}
+
+// Load air-down sounds (AirDownZero1.wav and AirDownEB.wav)
+async function loadAirSounds() {
+  try {
+    const respZero = await fetch('/static/E233/OriginalData/Sound/Air/AirDownZero1.wav', { cache: 'no-store' });
+    if (respZero.ok) airDownZeroFile = await respZero.arrayBuffer();
+  } catch (e) { console.debug('AirDownZero1 load error', e); }
+  try {
+    const respEB = await fetch('/static/E233/OriginalData/Sound/Air/AirDownEB.wav', { cache: 'no-store' });
+    if (respEB.ok) airDownEBFile = await respEB.arrayBuffer();
+  } catch (e) { console.debug('AirDownEB load error', e); }
+  try {
+    const airUp = await fetch('/static/E233/OriginalData/Sound/Air/AirUp.wav', { cache: 'no-store' });
+    if (airUp.ok) { airUpFile = await airUp.arrayBuffer(); }
+  } catch (e) { console.debug('AirUp load error', e); }
+}
+
+function playAirBuffer(arrayBuffer, volume = 0.9) {
+  if (!arrayBuffer) return;
+  try {
+    if (!bveCtx) {
+      // fallback to HTMLAudioElement
+      try { const a = new Audio('/static/E233/OriginalData/Sound/Air/AirDownZero1.wav'); a.volume = volume; a.play().catch(()=>{}); } catch(e){}
+      return;
+    }
+    if (bveCtx.state === 'suspended') {
+      bveCtx.resume().then(() => {
+        bveCtx.decodeAudioData(arrayBuffer.slice(0), (buffer) => {
+          const src = bveCtx.createBufferSource(); src.buffer = buffer; const gain = bveCtx.createGain(); gain.gain.value = volume; src.connect(gain); gain.connect(bveCtx.destination); src.start();
+        }, (err) => { console.debug('decode air buffer error', err); });
+      }).catch(() => {});
+    } else {
+      bveCtx.decodeAudioData(arrayBuffer.slice(0), (buffer) => {
+        const src = bveCtx.createBufferSource(); src.buffer = buffer; const gain = bveCtx.createGain(); gain.gain.value = volume; src.connect(gain); gain.connect(bveCtx.destination); src.start();
+      }, (err) => { console.debug('decode air buffer error', err); });
+    }
+  } catch (e) { console.debug('playAirBuffer error', e); }
 }
 function playNotchSound() {
   if (!notchSoundFile || !bveCtx) return;
@@ -5049,6 +5093,28 @@ ws.onmessage = (ev) => {
   if (typeof st.lever_notch === 'number' && lastNotchValue !== st.lever_notch) {
     if (lastNotchValue !== null) { // 첫 프레임은 재생 안 함
       playNotchSound();
+
+      // Play air-down sounds on specific brake transitions when stopped
+      try {
+        const prev = Number(lastNotchValue || 0);
+        const cur = Number(st.lever_notch || 0);
+        const speed = Number(st.v || 0);
+        const ebIndex = (typeof getEbIndex === 'function') ? getEbIndex() : 8;
+
+        // Condition: speed == 0 and brake notch decreased from 4 -> 3 => AirDownZero1.wav
+        if (speed === 0 && prev === 4 && cur === 3) {
+          playAirBuffer(airDownZeroFile, 0.9);
+        }
+
+        // Condition: speed == 0 and brake notch equals EB index => AirDownEB.wav
+        if (speed === 0 && cur === ebIndex - 1) {
+          playAirBuffer(airDownEBFile, 0.95);
+        }
+
+        if (speed === 0 && ((prev === 7 && cur === 6) || (prev === 6 && cur === 5) || (prev === 5 && cur === 4) || (prev === 3 && cur === 2) || (prev === 2 && cur === 1) || (prev === 1 && cur === 0))) {
+          playAirBuffer(airUpFile, 0.9);
+        }
+      } catch (e) { console.debug('air-down play error', e); }
     }
     lastNotchValue = st.lever_notch;
   }
