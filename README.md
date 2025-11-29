@@ -64,6 +64,7 @@ Planned upgrades include integration with advanced railway control frameworks an
 ---
 
 ## ⚙️ Config
+```bash
 tasc/
 ├── __pycache__
 │   └── server.cpython-312.pyc
@@ -79,7 +80,7 @@ tasc/
     ├── logos 
     ├── photos // Panel photos
     └── textures // Texture files
-
+```
 ---
 
 ## 📄 License
@@ -89,6 +90,15 @@ Copyright © 2025 Hyungsuk Choi, University of Maryland
 Permission is hereby granted to use and modify this software for personal or internal purposes only.  
 Redistribution, reproduction, resale, public posting, or sharing of this software or any modified versions  
 is strictly prohibited without the express written permission of the author.
+
+## E233 Data Provider Credit (Required Attribution)
+
+- **Data Provider**: `E233-3639`  
+- **Original Repository**: `https://github.com/E233-3639/BVE_E233-3000_Data.git`
+
+The vehicle data (OriginalData) included in the `tasc/static/E233` folder is provided by the above contributor. When using or distributing this data, you **must display the provider credit** in the project UI and documentation (e.g., README). This requirement follows the licensing and copyright attribution terms of the E233 data, so please ensure compliance.
+
+
 
 
 
