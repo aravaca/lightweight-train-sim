@@ -203,6 +203,7 @@ class StoppingSim:
         self.state = State(t=0.0, s=0.0, v=scn.v0, a=0.0, lever_notch=0, finished=False)
         self.running = False
         self.random_mode = False  # Flag to control game-over behavior in Random Scenario mode
+        self.final_notch_on_finish = 0  # Store notch when simulation finishes for random mode reload
         self.vref = build_vref(scn.L, 0.8 * veh.a_max)
         self._cmd_queue = deque()
 
@@ -285,7 +286,7 @@ class StoppingSim:
         self.timer_use_table = False
         self.timer_table = {}             # 예: {60:35, 70:30, 80:26}
         self.timer_v_target_kmh = 70.0    # 공식 기반 목표 속도(km/h)
-        self.timer_buffer_s = 80.0        # 여유초 (increased by ~20s)
+        self.timer_buffer_s = 60.0        # 여유초 (increased by ~20s)
 
         # ---------- 타이머 자동 산출(보정 데이터 기반) ----------
         # 보정 데이터: [{"v":60, "L":200, "t":23}, ...]  (km/h, m, sec)
@@ -695,14 +696,26 @@ class StoppingSim:
         prev_timer_enabled = getattr(self.state, "timer_enabled", False)
         # ▼ 기존 running 상태를 보존 (UI 명령이 random mode 상태 변경 시 중단되지 않도록)
         prev_running = getattr(self, "running", False)
-
+        # ▼ Random mode에서 notch 보존: 이전 실행의 final_notch_on_finish를 사용
+        # (setInitial 호출 시 random_mode=true이고 이전 시뮬레이션이 finished되었으면 notch를 유지)
+        # 첫 번째 run에서는 final_notch_on_finish=0이므로 다시 0에서 시작(정상)
+        # 두 번째 이후 run에서는 이전 final_notch_on_finish값으로 시작(보존된 notch)
+        if self.random_mode and hasattr(self, 'final_notch_on_finish'):
+            prev_lever_notch = int(self.final_notch_on_finish)
+            if DEBUG:
+                print(f"[RESET] *** RANDOM MODE NOTCH PRESERVATION: Using final_notch_on_finish={prev_lever_notch}")
+        else:
+            prev_lever_notch = 0
+            if DEBUG:
+                print(f"[RESET] Normal reset: lever_notch starting at 0 (random_mode={self.random_mode})")
 
         # 계획 속도는 시나리오의 v0를 따로 들고 있고, 대기 상태에는 v=0으로 둔다
         self._planned_v0 = self.scn.v0
 
         self.state = State(
-            t=0.0, s=0.0, v=0.0, a=0.0, lever_notch=0, finished=False
+            t=0.0, s=0.0, v=0.0, a=0.0, lever_notch=prev_lever_notch, finished=False
         )
+        
         # Only stop if not in a continuing random scenario
         # (If running due to random mode, keep it running unless explicitly stopped)
         if not self.random_mode:
@@ -1351,6 +1364,10 @@ class StoppingSim:
             norm = max(0, min(100, norm))
             score = round(norm, 0)
             st.score = score
+            
+            # Store final notch for random mode reload
+            self.final_notch_on_finish = st.lever_notch
+            
             # In Random Scenario mode, keep running=True so physics can continue after finish
             # (waiting for advanceStation command). In normal mode, stop the simulation.
             if not self.random_mode:
@@ -1358,6 +1375,7 @@ class StoppingSim:
             if DEBUG:
                 print(f"Avg jerk: {avg_jerk:.4f}, jerk_score: {jerk_score:.2f}, final score: {score}")
                 print(f"Simulation finished: stop_error={st.stop_error_m:.3f} m, score={score}")
+                print(f"[FINISH] Preserving final notch: {self.final_notch_on_finish} (random_mode={self.random_mode})")
 
     def remove_negative_values(self, notches: List[int]) -> List[int]:
         """마지막 음수 값 뒤에 있는 모든 수 반환, 음수가 없으면 원본 리스트 반환"""
@@ -1597,11 +1615,19 @@ async def ws_endpoint(ws: WebSocket):
                     # a light reset while preserving world coordinate so visuals
                     # remain continuous.
                     try:
-                        if not getattr(sim.state, 'finished', False):
-                            # only meaningful when previous run has finished
+                        # In random mode, allow advance even if not finished yet
+                        # In normal mode, only allow after finished
+                        is_random_mode = getattr(sim, 'random_mode', False)
+                        is_finished = getattr(sim.state, 'finished', False)
+                        
+                        if not is_random_mode and not is_finished:
+                            # only meaningful when previous run has finished (in normal mode)
                             if DEBUG:
-                                print(f"[ADVANCE] Game not finished yet, ignoring advanceStation")
+                                print(f"[ADVANCE] Game not finished yet, ignoring advanceStation (not in random mode)")
                             continue
+                        
+                        if is_random_mode and not is_finished and DEBUG:
+                            print(f"[ADVANCE] Random mode: allowing advance even though game not finished")
 
                         dist = float(payload.get('dist', 600.0))
                         grade = float(payload.get('grade', 0.0)) / 10.0
@@ -1613,10 +1639,17 @@ async def ws_endpoint(ws: WebSocket):
                         # preserve state across soft-reset
                         prev_s = float(sim.state.s)
                         prev_timer_enabled = getattr(sim.state, 'timer_enabled', False)
-                        prev_lever_notch = int(getattr(sim.state, 'lever_notch', 0))
+                        # Preserve current notch - use the last notch the player set
+                        # Priority: use notch_history if available, otherwise final_notch_on_finish, otherwise current lever_notch
+                        if sim.notch_history:
+                            prev_lever_notch = int(sim.notch_history[-1])
+                        elif is_finished and getattr(sim, 'final_notch_on_finish', None) is not None:
+                            prev_lever_notch = int(sim.final_notch_on_finish)
+                        else:
+                            prev_lever_notch = int(sim.state.lever_notch)
 
                         if DEBUG:
-                            print(f"[ADVANCE] Starting soft reset: prev_s={prev_s:.2f}, timer_enabled={prev_timer_enabled}, notch={prev_lever_notch}")
+                            print(f"[ADVANCE] Starting soft reset: prev_s={prev_s:.2f}, timer_enabled={prev_timer_enabled}, notch={prev_lever_notch} (from notch_history={len(sim.notch_history)} entries), is_finished={is_finished}")
 
                         # perform a reset to clear command queue / timing artifacts,
                         # then restore the world coordinate and apply new scenario end
@@ -1658,7 +1691,8 @@ async def ws_endpoint(ws: WebSocket):
                         sim.state.residual_speed_kmh = 0.0
                         sim.state.v = 0.0
                         sim.state.a = 0.0
-                        sim.state.lever_notch = 0
+                        # NOTE: Do NOT reset lever_notch here - keep the preserved notch from previous run
+                        # sim.state.lever_notch = 0
 
                         # CRITICAL: Set running=True to ensure physics loop continues
                         sim.running = True
@@ -1673,6 +1707,7 @@ async def ws_endpoint(ws: WebSocket):
                             print(f"[ADVANCE] >>> sim.running={sim.running} (should be True)")
                             print(f"[ADVANCE] >>> sim.state.v={sim.state.v} (should be 0.0)")
                             print(f"[ADVANCE] >>> sim.state.finished={sim.state.finished} (should be False)")
+                            print(f"[ADVANCE] >>> sim.state.lever_notch={sim.state.lever_notch} (should be {prev_lever_notch}, preserved from previous run)")
                             print(f"[ADVANCE] >>> sim._a_cmd_filt={sim._a_cmd_filt} (will be initialized when notch applied)")
                     except Exception as e:
                         if DEBUG:

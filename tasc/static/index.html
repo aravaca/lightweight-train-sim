@@ -1489,6 +1489,11 @@ function handleObstacleState(st) {
       </div>
 
       <div class="mini-row">
+        <span class="mini-label">Maximum Speed</span>
+        <span class="mini-value" id="miniMaxSpeed">—</span>
+      </div>
+
+      <div class="mini-row">
         <span class="mini-label">Speed</span>
         <span class="mini-value" id="miniSpeed">—</span>
       </div>
@@ -1645,7 +1650,7 @@ function handleObstacleState(st) {
       <div class="rnd-toggle">
         <input type="checkbox" id="rndToggle" />
         <label for="rndToggle" class="slider"></label>
-        <span class="tasc-label" style="font-family: 'A-OTF Shin Go Pro', sans-serif; font-style: normal; font-weight: 700; ">Random Scenario</span>
+        <span class="tasc-label" style="font-family: 'A-OTF Shin Go Pro', sans-serif; font-style: normal; font-weight: 700; ">Drive Mode</span>
       </div>
     </div>
 
@@ -2938,7 +2943,8 @@ function maybeSpawnEmergencyObstacle(initialDist) {
   // 조건 부족하면 생성 안 함
   if (!initialDist || initialDist <= 20) return;
 
-  if (Math.random() > 0.20) return;
+  // 5% 확률로만 생성
+  if (Math.random() > 0.05) return;
 
   // 140m ~ 210m 사이에서만 장애물 위치 선택
   const minRange = 140;
@@ -5167,6 +5173,13 @@ addEventListener("keydown", (e) => {
     const rndEl = document.getElementById('rndToggle');
     const atFinished = !!(st && st.finished);
     const isRandomMode = !!(rndEl && rndEl.checked);
+    const currentSpeed = (st && typeof st.v === 'number') ? st.v : 0;
+
+    // In Random mode during gameplay: block Space unless stopped
+    if (isRandomMode && !atFinished && currentSpeed > 0) {
+      // Train is moving during random mode gameplay - ignore Space key
+      return;
+    }
 
     // If in Random mode and game finished: advance to next station
     if (isRandomMode && atFinished) {
