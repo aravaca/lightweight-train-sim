@@ -588,9 +588,35 @@ class StoppingSim:
 
 
     def queue_command(self, name: str, val: int = 0):
-        self._cmd_queue.append(
-            {"t": self.state.t + self.veh.tau_cmd, "name": name, "val": val}
-        )
+        # Emergency brake should bypass command latency (tau_cmd) and
+        # apply immediately (real-world behaviour). For EB we also
+        # shortcut the brake filter by setting brake split and
+        # _a_cmd_filt to the commanded brake so the strong brake
+        # takes effect without waiting tau_brk.
+        if name == "emergencyBrake":
+            # Apply immediately
+            cmd = {"t": self.state.t, "name": name, "val": val}
+            self._apply_command(cmd)
+
+            # If Emergency Brake was set, force brake states to commanded values
+            try:
+                st = self.state
+                if st.lever_notch == (self.veh.notches - 1):
+                    a_cmd_total = self._effective_brake_accel(st.lever_notch, st.v)
+                    w = self._blend_w_regen(st.v)
+                    # Split into electric/air immediately to skip slower tau_brk
+                    self.brk_elec = a_cmd_total * w
+                    self.brk_air  = a_cmd_total * (1.0 - w)
+                    self.brk_accel = self.brk_elec + self.brk_air
+                    # Bypass tau_brk filter so _a_cmd_filt equals commanded now
+                    self._a_cmd_filt = a_cmd_total
+            except Exception:
+                # Be defensive: if anything goes wrong, fall back to queued behavior
+                self._cmd_queue.append({"t": self.state.t + self.veh.tau_cmd, "name": name, "val": val})
+            return
+
+        # Normal commands respect command latency
+        self._cmd_queue.append({"t": self.state.t + self.veh.tau_cmd, "name": name, "val": val})
 
     def _apply_command(self, cmd: dict):
         st = self.state

@@ -2419,7 +2419,113 @@ function updateInstrumentHUD({ speed }) {
 }
 window.updateInstrumentHUD = updateInstrumentHUD;
 
-const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+
+// --- Low-speed noise: Web Audio 기반 부드러운 루프 + 페이드 ---
+// 목표: 속도 <= 10 km/h 일 때 루프 재생, 10 km/h 부근에서 부드럽게 페이드아웃
+const NOISE_PATH = '/static/E233/OriginalData/Sound/Noise.wav';
+// 최대 음량: 1.0은 unity(무증폭). 사용자가 요청에 따라 크게 증폭합니다.
+// 주의: 과도한 증폭은 클리핑/디스토션을 유발할 수 있습니다.
+const MAX_VOL = 6.0;      // 증폭값 — 필요하면 더 조정하세요
+const FADE_TIME = 2;   // 초 단위 페이드 시간
+let lastSpeedKmh = 999;
+
+// HTMLAudioElement + AudioContext(Gain)를 사용해 볼륨을 미세 제어
+const zeroNoiseEl = new Audio(NOISE_PATH);
+zeroNoiseEl.loop = true;
+zeroNoiseEl.preload = 'auto';
+zeroNoiseEl.volume = 1.0;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const gainNode = audioCtx.createGain();
+gainNode.gain.value = 0.0; // 초기 무음
+let sourceNode = null;
+try {
+  sourceNode = audioCtx.createMediaElementSource(zeroNoiseEl);
+  sourceNode.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+} catch (e) {
+  // 일부 환경/브라우저에서는 실패할 수 있음; 그 경우에도 zeroNoiseEl 직접 제어로 폴백
+  console.debug('MediaElementSource unavailable, falling back to element playback.', e);
+}
+
+let zeroNoiseAllowed = false; // 사용자가 명시적으로 허용했는지
+let pauseAfterFadeTimeout = null;
+
+// UI 버튼 없이 자동 허용(사용자 상호작용 바인딩)으로 처리합니다.
+
+function _enableZeroNoiseOnUserGesture() {
+  zeroNoiseAllowed = true;
+  // resume audio context (브라우저에 따라 필요)
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(()=>{});
+  }
+  // try to play immediately if speed is low
+  _updateNoiseForSpeed(lastSpeedKmh / 3.6);
+}
+
+function _setGainSmooth(targetVol) {
+  try {
+    const t0 = audioCtx.currentTime;
+    gainNode.gain.cancelScheduledValues(t0);
+    // 시작값을 현재 값으로 고정
+    gainNode.gain.setValueAtTime(gainNode.gain.value, t0);
+    gainNode.gain.linearRampToValueAtTime(Math.max(0, Math.min(MAX_VOL, targetVol)), t0 + FADE_TIME);
+  } catch (e) {
+    // ignore if audioCtx not usable
+  }
+}
+
+function _tryPlayZeroNoise() {
+  if (!zeroNoiseAllowed) {
+    // 아직 허용되지 않으면 아무 동작 없이 리턴
+    return;
+  }
+  try {
+    if (zeroNoiseEl.paused) {
+      zeroNoiseEl.play().catch(()=>{});
+    }
+  } catch (e) {}
+}
+
+function _pauseAfterFade() {
+  if (pauseAfterFadeTimeout) clearTimeout(pauseAfterFadeTimeout);
+  pauseAfterFadeTimeout = setTimeout(() => {
+    try { if (!zeroNoiseEl.paused) { zeroNoiseEl.pause(); zeroNoiseEl.currentTime = 0; } } catch (e) {}
+  }, (FADE_TIME + 0.05) * 1000);
+}
+
+function _updateNoiseForSpeed(v_ms) {
+  // v_ms: m/s
+  lastSpeedKmh = v_ms * 3.6;
+  const v_kmh = lastSpeedKmh;
+  if (v_kmh == 0) {
+    // 0..10km/h 사이에서 볼륨 비례 (10→0)
+    const ratio = Math.max(0, Math.min(1, 1 - v_kmh / 10.0));
+    const targetVol = MAX_VOL * ratio;
+    _tryPlayZeroNoise();
+    _setGainSmooth(targetVol);
+    // clear any pending pause
+    if (pauseAfterFadeTimeout) { clearTimeout(pauseAfterFadeTimeout); pauseAfterFadeTimeout = null; }
+  } else {
+    // above threshold → fade to 0 and then pause
+    _setGainSmooth(0.0);
+    _pauseAfterFade();
+  }
+}
+
+// 메시지 수신에서 상태를 보고 속도(v)가 임계치 이하이면 재생, 아니면 페이드아웃
+ws.addEventListener('message', (ev) => {
+  try {
+    const msg = JSON.parse(ev.data);
+    if (msg && msg.type === 'state' && msg.payload) {
+      const v = Number(msg.payload.v) || 0; // m/s
+      _updateNoiseForSpeed(v);
+    }
+  } catch (e) {
+    // ignore invalid JSON or other parsing errors
+  }
+});
 
 const icons = [
   "/static/logos/e233_logo.png",
@@ -4891,6 +4997,28 @@ const enabled = document.getElementById("tascToggle").checked;
   // try{ playStationMelody(2); }catch(e){}
 }
 btnStart.addEventListener("click", startRun);
+
+// 자동 허용: 사용자가 Start를 누르거나 화면을 처음 누르면 오디오 재생 권한을 활성화
+try {
+  // Start 버튼 클릭 시(심지어 키보드 Space로 시작할 때도) 허용
+  btnStart.addEventListener('click', _enableZeroNoiseOnUserGesture, { once: true });
+} catch (e) {}
+
+// 첫 번째 포인터 상호작용(클릭/터치 등)에서도 오디오를 활성화 (별도 버튼 없이 동작)
+try {
+  document.addEventListener('pointerdown', _enableZeroNoiseOnUserGesture, { once: true });
+} catch (e) {}
+
+// 첫 번째 키보드 입력으로도 오디오 활성화 (입력 폼 등에서의 키 입력은 제외)
+try {
+  document.addEventListener('keydown', function _kbdEnableForAudio(e){
+    try {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : null;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'OPTION') return;
+      _enableZeroNoiseOnUserGesture();
+    } catch (err) {}
+  }, { once: true });
+} catch (e) {}
 
 /* 재시작 FAB */
 const btnMobileRestart=document.getElementById("btnMobileRestart");
