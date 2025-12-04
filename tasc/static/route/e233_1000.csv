@@ -2,8 +2,8 @@ station number,station name,arrival time,departure time,departure prep duration(
 sta0,Omiya,16:37:50,16:38:00,10,1600,135, 70
 sta1,Saitama-Shintoshin,16:40:15,16:41:00,20,1100,80, 90
 sta2,Yono,16:42:20,16:43:00,20,1600,95, 90
-sta3,Kita-Urawa,16:44:35,16:45:00,25,1800,120, 90
-sta4,Urawa,16:47:00,16:48:00,30,1700,80, 90
+sta3,Kita-Urawa,16:44:35,16:45:00,25,1800,120, 115
+sta4,Urawa,16:47:00,16:48:00,30,1700,80, 115
 sta5,Minami-Urawa,16:49:20,16:50:30,60,2800,180, 90
 sta6,Warabi,16:53:30,16:54:00,25,1900,115, 90
 sta7,Nishi-Kawaguchi,16:55:55,16:56:20,20,2000,125, 90
