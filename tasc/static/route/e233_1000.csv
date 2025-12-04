@@ -1,6 +1,6 @@
 station number,station name,arrival time,departure time,departure prep duration(sec),distance to next station(meters), travel time to next station(sec)
 sta0,Omiya,16:37:50,16:38:00,10,1100,135
-sta1,Saitama-Shintoshin,16:40:15,16:39:30,20,1600,80
+sta1,Saitama-Shintoshin,16:40:15,16:41:00,20,1600,80
 sta2,Yono,16:42:20,16:43:00,20,1100,95
 sta3,Kita-Urawa,16:44:35,16:45:00,25,1800,120
 sta4,Urawa,16:47:00,16:48:00,30,1700,80
