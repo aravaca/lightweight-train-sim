@@ -1511,10 +1511,10 @@ function handleObstacleState(st) {
         <span class="mini-label">Speed</span>
         <span class="mini-value" id="miniSpeed">—</span>
       </div>
-<!--       
-      <div class="mini-row">
+      
+      <!-- <div class="mini-row">
         <span class="mini-label">Max Speed</span>
-        <span class="mini-value" id="miniMaxSpeed">—</span>
+        <span class="mini-value" id="miniMaxSpeed">90</span>
       </div>
       
       <div class="mini-row">
@@ -5814,6 +5814,29 @@ ws.onmessage = (ev) => {
     
     const stopErr = Number(st.stop_error_m ?? 0);
     showScoreOverlay(score, stopErr);
+    
+    // Update feedback area with arrival time status
+    try {
+      const fbEl = document.getElementById('fb');
+      if (fbEl) {
+        let fbHtml = `<div>Stop error: <strong>${stopErr.toFixed(2)} m</strong></div>`;
+        
+        // Add arrival time status if in Random mode with timer
+        const rndEl = document.getElementById('rndToggle');
+        if (rndEl && rndEl.checked && window.__miniTimerRemaining != null) {
+          const remaining = window.__miniTimerRemaining;
+          if (remaining >= 0) {
+            fbHtml += `<div style="color: #4CAF50; font-weight: bold;">Arrived on time</div>`;
+          } else {
+            const lateSeconds = Math.abs(remaining);
+            fbHtml += `<div style="color: #f44336; font-weight: bold;">Arrived ${lateSeconds} seconds late</div>`;
+          }
+        }
+        fbEl.innerHTML = fbHtml;
+      }
+    } catch (e) {
+      console.debug('feedback update error:', e);
+    }
     
     // Play doors open sound when game finishes
     try {
