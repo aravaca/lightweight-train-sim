@@ -1,5 +1,5 @@
 git add .
-git commit -m "add station name"
+git commit -m "add keihin-tohoku sta melody"
 git push origin main
 
 pip install fastapi uvicorn[standard]
