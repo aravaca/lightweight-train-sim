@@ -1132,6 +1132,13 @@ class StoppingSim:
             self.notch_history.append(st.lever_notch)
 
         self.time_history.append(st.t)
+
+        # If train has finished (come to complete stop), freeze all dynamics
+        if st.finished:
+            st.a = 0.0
+            st.v = max(0.0, st.v)  # Ensure v doesn't go negative
+            # Do not update position or time, skip rest of physics
+            return
         # --- 기존 first_brake_done 로직 삭제하고 아래로 교체 ---
         # 초기 0단을 한번이라도 봤는지 표시
         if not self.seen_zero_notch and st.lever_notch == 0:

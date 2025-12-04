@@ -2969,8 +2969,8 @@ function maybeSpawnEmergencyObstacle(initialDist) {
   // 조건 부족하면 생성 안 함
   if (!initialDist || initialDist <= 20) return;
 
-  // 
-  if (Math.random() > 0.001) return;
+  // if (Math.random() > 0.001) return;
+  if (true) return;
 
   // 140m ~ 210m 사이에서만 장애물 위치 선택
   const minRange = 140;
@@ -4685,7 +4685,7 @@ document.addEventListener('keydown', (ev) => {
   } catch (e) { /* ignore */ }
 });
 
-function playStationMelody() {
+async function playStationMelody() {
   if (!stationMelody) return;
 
 try {
@@ -4734,6 +4734,34 @@ try {
   } else {
     desiredSrc = "/static/audio/tokyo.mp3";
   }
+ 
+    // If Random mode is enabled and a route CSV provided station names,
+    // attempt to play the next-station announcement audio from
+    // `/static/audio/<StationName>.mp3` if that file exists. Fall back
+    // to the variant chosen above if not present or on error.
+    try {
+      const rndEl = document.getElementById('rndToggle');
+      const useRouteAudio = rndEl && rndEl.checked && window.__routeStationNames && Array.isArray(window.__routeStationNames) && window.__routeStationNames.length > 0;
+      if (useRouteAudio) {
+        const idx = window.__routeStationNamesIndex || 0;
+        const nextIdx = (idx) % window.__routeStationNames.length;
+        const nextName = window.__routeStationNames[nextIdx];
+        if (nextName) {
+          const candidatePath = '/static/audio/' + encodeURIComponent(nextName) + '.mp3';
+          try {
+            const r = await fetch(candidatePath, { method: 'GET', cache: 'no-store' });
+            if (r && r.ok) {
+              desiredSrc = candidatePath;
+              variantKey = `station-${nextName}`;
+            }
+          } catch (e) {
+            // ignore fetch errors and keep default desiredSrc
+          }
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
 
     // 필요할 때만 src 변경 (불필요한 재로딩 방지)
     if (stationMelody._variantKey !== variantKey) {
@@ -5050,6 +5078,21 @@ window.continueToNextStation = function() {
       // The pending values will be loaded when the server sends the next state
     }
 
+    // Reset announcement state so it can be triggered again on next run
+    try {
+      announcementPlayed = false;
+      announcementArmed = false;
+      lastRemaining = null;
+      announcementTriggerDist = computeAnnouncementTriggerDistForCurrentTrain();
+      if (stationMelody) {
+        try { stationMelody.pause(); } catch (e) {}
+        try { stationMelody.currentTime = 0; } catch (e) {}
+        try { stationMelody.src = ''; } catch (e) {}
+        try { stationMelody._variantKey = null; } catch (e) {}
+        try { if (stationMelody._endedHandler) { stationMelody.removeEventListener('ended', stationMelody._endedHandler); stationMelody._endedHandler = null; } } catch (e) {}
+      }
+    } catch (e) { /* non-fatal */ }
+
     // Prepare parameters and send advanceStation command to server
     const dist = Number(inputDist.value) || 600;
     const grade = Number(inputGrade.value) || 0.0;
@@ -5152,6 +5195,17 @@ async function startRun(){
   announcementArmed = false;
   lastRemaining = null;
   announcementTriggerDist = computeAnnouncementTriggerDistForCurrentTrain();
+
+  // Reset stationMelody element so announcements can be retriggered in subsequent runs
+  try {
+    if (stationMelody) {
+      try { stationMelody.pause(); } catch (e) {}
+      try { stationMelody.currentTime = 0; } catch (e) {}
+      try { stationMelody.src = ''; } catch (e) {}
+      try { stationMelody._variantKey = null; } catch (e) {}
+      try { if (stationMelody._endedHandler) { stationMelody.removeEventListener('ended', stationMelody._endedHandler); stationMelody._endedHandler = null; } } catch (e) {}
+    }
+  } catch (e) { /* non-fatal */ }
 
   
   //  새 런 시작할 때 점수 오버레이 숨기기
