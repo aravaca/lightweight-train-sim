@@ -1,5 +1,5 @@
 git add .
-git commit -m "add on-time/late feedback"
+git commit -m "add reset logic"
 git push origin main
 
 pip install fastapi uvicorn[standard]
@@ -7,6 +7,4 @@ cd tasc
 uvicorn server:app --reload --host 127.0.0.1 --port 8000
 
 +++
-game over logic add
 add curve track
-add edge case proof (when user goes over -5m)

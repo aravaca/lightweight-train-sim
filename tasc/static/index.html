@@ -5131,6 +5131,23 @@ window.continueToNextStation = function() {
           window.__routePendingDepart = null;
         }
         console.debug('next station loaded: ti=', ti, 'travelSec=', window.__routePendingTravelSec, 'depart=', window.__routePendingDepart);
+        
+        // Check if this is the terminal station (end=1)
+        try {
+          if (window.__routeEndFlags && Array.isArray(window.__routeEndFlags)) {
+            const endFlagIdx = ti % window.__routeEndFlags.length;
+            const isTerminal = window.__routeEndFlags[endFlagIdx] === 1;
+            if (isTerminal) {
+              console.debug('Final destination reached -> reloading page');
+              // Wait a moment for door close sound to play, then reload
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+              return; // Exit early since we're about to reload
+            }
+          }
+        } catch (e) { console.debug('end flag check error', e); }
+        
         // Show static travel time in miniTimer
         const miniTimer = document.getElementById('miniTimer');
         try {
@@ -5154,8 +5171,18 @@ window.continueToNextStation = function() {
     } catch(e) { console.debug('pending setup in continueToNextStation error', e); }
 
     // Give a small feedback message
-    if (fb) fb.innerHTML = `<div class="ok">다음 역으로 진행합니다 — 문 닫힘</div>`;
-    setTimeout(()=>{ if (fb) fb.textContent = "Space로 시작. W/S로 브레이크 조절하세요."; }, 2000);
+    if (fb) {
+      // Check if terminal was reached
+      const isTerminalReach = window.__routeEndFlags && Array.isArray(window.__routeEndFlags) && 
+                              window.__routePendingTravelTimesIndex != null &&
+                              window.__routeEndFlags[window.__routePendingTravelTimesIndex % window.__routeEndFlags.length] === 1;
+      if (isTerminalReach) {
+        fb.innerHTML = `<div class="ok">종착역 도착 — 페이지 새로고침합니다</div>`;
+      } else {
+        fb.innerHTML = `<div class="ok">다음 역으로 진행합니다 — 문 닫힘</div>`;
+        setTimeout(()=>{ if (fb) fb.textContent = "Space로 시작. W/S로 브레이크 조절하세요."; }, 2000);
+      }
+    }
   } catch (e) {
     console.debug('continueToNextStation error', e);
   }
@@ -6859,6 +6886,7 @@ if (window.rebuildLeftPoles) {
               let departIdx = -1;
               let travIdx = -1;
               let stationIdx = -1;
+              let endIdx = -1;
               for (let i = 0; i < headers.length; i++) {
                 const raw = headers[i] || '';
                 const h = raw.toLowerCase().replace(/\s+/g, '');
@@ -6867,11 +6895,13 @@ if (window.rebuildLeftPoles) {
                 if (departIdx === -1 && (h.includes('depart') || h.includes('departure') || h.includes('departuretime'))) { departIdx = i; }
                 if (travIdx === -1 && (h.includes('traveltime') || h.includes('traveltimetonext') || h.includes('traveltimetonextsec') || h.includes('travel') || h.includes('travel_time') || h.includes('time_to_next') )) { travIdx = i; }
                 if (stationIdx === -1 && (h.includes('station') && h.includes('name'))) { stationIdx = i; }
+                if (endIdx === -1 && (h === 'end' || h === 'isend' || h === 'isterminal' || h === 'terminal')) { endIdx = i; }
               }
               if (colIdx === -1) throw new Error('no-col');
               const distances = [];
               const travelTimes = [];
               const stationNames = [];
+              const endFlags = [];
               for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
                 if (cols.length > colIdx) {
@@ -6886,10 +6916,18 @@ if (window.rebuildLeftPoles) {
                   const sname = cols[stationIdx].trim();
                   stationNames.push(sname);
                 }
+                // Parse 'end' column (1 = terminal, 0 or missing = not terminal)
+                if (endIdx !== -1 && cols.length > endIdx) {
+                  const endVal = Number(cols[endIdx].trim());
+                  endFlags.push(!Number.isNaN(endVal) ? (endVal === 1 ? 1 : 0) : 0);
+                } else {
+                  endFlags.push(0);
+                }
               }
               if (distances.length > 0) {
                 window.__routeDistances = distances;
                 window.__routeDistancesIndex = 0;
+                window.__routeEndFlags = endFlags;
                 // store travel times if present
                 if (travelTimes.length > 0) {
                   window.__routeTravelTimes = travelTimes;
