@@ -868,54 +868,40 @@ class StoppingSim:
         idx = max(0, min(-lever_notch - 1, n_notches - 1))
         base_accel = float(self.veh.forward_notch_accels[idx])
 
-        # Work in km/h for intuitive thresholds
         v_kmh = v * 3.6
         max_v_kmh = max(1.0, float(self.veh.maxSpeed_kmh))
 
-        # Per-notch fade start/end speeds (km/h).
-        # These are simple, realistic defaults for EMU commuter trains (adjustable):
-        # P1: effective at very low speeds, fades out by ~15 km/h
-        # P2: effective up to ~40 km/h
-        # P3: effective up to ~70 km/h
-        # P4: effective up to ~100 km/h
-        # P5: remains effective to top speed
-        # If vehicle has different number of forward notches, scale these values.
-        default_starts = [0.0, 5.0, 20.0, 40.0, 70.0]
-        default_ends   = [15.0, 40.0, 70.0, 100.0, max_v_kmh]
+        # 노치별 plateau 종료, exponential 시작, min_factor
+        flat_ends   = [5.0, 20.0, 32.0, 33.0, 33.0]         # plateau 끝
+        exp_starts  = [30.0, 33.0, 54.0, 54.0, 54.0]       # exponential 시작
+        min_factors = [0.0003, 0.04, 0.07, 0.14, 0.27]  # 노치별 최솟값
 
-        # Build per-notch start/end arrays matching n_notches
-        starts = []
-        ends = []
-        for i in range(n_notches):
-            if i < len(default_starts):
-                s = default_starts[i]
-                e = default_ends[i]
-            else:
-                # scale remaining notches linearly up to max_v_kmh
-                frac = float(i) / max(1, (n_notches - 1))
-                s = frac * max_v_kmh * 0.2
-                e = max_v_kmh * (0.2 + 0.8 * frac)
-            # clamp to vehicle max
-            s = min(max_v_kmh, s)
-            e = min(max_v_kmh, max(s + 1.0, e))
-            starts.append(s)
-            ends.append(e)
+        # idx가 배열 범위를 넘어가면 마지막 값 사용
+        s_k = flat_ends[min(idx, len(flat_ends)-1)]
+        e_k = exp_starts[min(idx, len(exp_starts)-1)]
+        min_factor = min_factors[min(idx, len(min_factors)-1)]
 
-        # Minimum gain when fully faded
-        min_factor = 0.05
+        # mid_factor는 linear 구간 중간값
+        mid_factor = 0.35 + 0.1 * idx
+        mid_factor = min(1.0, max(min_factor, mid_factor))
 
-        # If below start -> full notch effect; if above end -> faded to min_factor
-        s_k = starts[idx]
-        e_k = ends[idx]
+        # ----- Region 1: plateau -----
         if v_kmh <= s_k:
             factor = 1.0
-        elif v_kmh >= e_k:
-            factor = min_factor
-        else:
-            x = (v_kmh - s_k) / (e_k - s_k)
-            factor = 1.0 - (1.0 - min_factor) * x
-            factor = max(min_factor, min(1.0, factor))
 
+        # ----- Region 2: linear decay -----
+        elif v_kmh <= e_k:
+            t = (v_kmh - s_k) / max(1e-6, (e_k - s_k))
+            factor = 1.0 - (1.0 - mid_factor) * t
+            factor = max(factor, min_factor)  # linear에서도 min_factor 보장
+
+        # ----- Region 3: exponential tail -----
+        else:
+            t = (v_kmh - e_k) / max(1e-6, (max_v_kmh - e_k))
+            factor = (mid_factor - min_factor) * (2.71828 ** (-3 * t)) + min_factor
+            factor = max(factor, min_factor)
+
+        factor = min(1.0, factor)  # 상한 1.0
         return base_accel * factor
 
 
@@ -1337,24 +1323,28 @@ class StoppingSim:
             score += int(jerk_score)
 
             # ▼ 타임오버/정확 도착 보정 (정수 초 기준)
-            if st.timer_enabled:
-                # 정수 0초(내림) 도착 → 보너스
-                if st.time_remaining_int == 0:
-                    score += int(self.timer_exact_bonus)
-                    st.issues["timer_exact_hit"] = True
-                    st.issues["timer_exact_bonus"] = int(self.timer_exact_bonus)
-                    st.time_overrun_int = 0
-                    st.time_overrun_s = 0.0
-                elif st.time_remaining_int < 0:
-                    over_s = abs(st.time_remaining_int)  # 정수 초
-                    overtime_pen = min(
-                        self.timer_overtime_penalty_per_s * over_s,
-                        self.timer_overtime_penalty_cap
-                    )
-                    score -= int(overtime_pen)
-                    st.issues["timeout_overrun_s"] = over_s
-                    st.issues["timeout_penalty"] = int(overtime_pen)
+            # if st.timer_enabled:
+            #     score += 100
+
                 # 남은 시간이 양수(조기 도착)인 경우는 보너스/페널티 없음
+            # if st.timer_enabled:
+            #     # 정수 0초(내림) 도착 → 보너스
+            #     if st.time_remaining_int == 0:
+            #         score += int(self.timer_exact_bonus)
+            #         st.issues["timer_exact_hit"] = True
+            #         st.issues["timer_exact_bonus"] = int(self.timer_exact_bonus)
+            #         st.time_overrun_int = 0
+            #         st.time_overrun_s = 0.0
+            #     elif st.time_remaining_int < 0:
+            #         over_s = abs(st.time_remaining_int)  # 정수 초
+            #         overtime_pen = min(
+            #             self.timer_overtime_penalty_per_s * over_s,
+            #             self.timer_overtime_penalty_cap
+            #         )
+            #         score -= int(overtime_pen)
+            #         st.issues["timeout_overrun_s"] = over_s
+            #         st.issues["timeout_penalty"] = int(overtime_pen)
+            #     # 남은 시간이 양수(조기 도착)인 경우는 보너스/페널티 없음
 
             if self.run_over: #안전 위반에 대한 강력한 패널티
                 score -= 1000

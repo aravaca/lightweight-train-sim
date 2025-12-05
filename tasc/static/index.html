@@ -1269,7 +1269,7 @@ function chooseSubMessage(score, stopErr) {
   // if (s >= 75) return "👍 Nice run. Can be smoother.";
   // if (s >= 50) return "📝 Try to brake a bit earlier.";
   // return "💡 Watch distance & brake in steps.";
-  return "수고하셨습니다."
+  return "Press Space to continue"
 }
 
 function showScoreOverlay(finalScore, stopErr) {
@@ -3918,7 +3918,7 @@ class BveSoundEngine {
   constructor(ctx) {
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = 2.0; // Master volume
+    this.master.gain.value = 1.0; // Master volume
     this.master.connect(ctx.destination);
 
     // CSV tables: { speed -> { wavName -> value } }
@@ -5797,7 +5797,7 @@ ws.onmessage = (ev) => {
         let timerScore = 0;
         if (remaining >= 0) {
           // 제시간에 도착하거나 일찍 왔으면 +20 (cap 100)
-          timerScore = 20;
+          timerScore = 10;
         } else {
           // 15초씩 늦을때마다 -10 (최소 0점)
           const lateSeconds = Math.abs(remaining);
