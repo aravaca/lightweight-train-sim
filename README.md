@@ -1,4 +1,4 @@
-# JR Train Simulator: Lightweight Precision Stopping Trainer (PTS)
+# JR x KR Train Simulator: Lightweight Precision Stopping Trainer (PTS)
 
  
 [Try PTS!⛅️ → Play full screen on PC](https://jrtasc.kro.kr/) 
@@ -19,6 +19,7 @@ Supports:
 - **Brake navigation** to explore efficient brake profiles (Toggle with B)
 - **Mini HUD** to assist trainees
 - Realistic VVVF sounds
+- Safety systems, such as ATS & ATC
 
 Powered by **Three.js 3D visualization**, the simulator delivers an immersive driver’s POV and realistic track environment.  
 Real-time **velocity–distance** and **braking curve** rendering provides intuitive, instant feedback.
@@ -41,17 +42,6 @@ By replicating authentic **EMU physics**, it enables:
 - **Operator Training:** Repetitive personal-level stopping practice using simplified simulator hardware  
 - **Educational Demonstrations:** Visualization of efficient brake curves 
 - **Research & Development:** Testing human–automation interaction (TASC) algorithms    
-
----
-
-## 🔭 Future Development
-
-Planned upgrades include integration with advanced railway control frameworks and signals such as:
-
-- **ATC (Automatic Train Control)**  
-- **ATP (Automatic Train Protection)**  
-- **ATS (Automatic Train Stop)**  
-
 
 ---
 
@@ -97,6 +87,8 @@ is strictly prohibited without the express written permission of the author.
 - **Original Repository**: `https://github.com/E233-3639/BVE_E233-3000_Data.git`
 
 The vehicle data (OriginalData) included in the `tasc/static/E233` folder is provided by the above contributor. When using or distributing this data, you **must display the provider credit** in the project UI and documentation (e.g., README). This requirement follows the licensing and copyright attribution terms of the E233 data, so please ensure compliance.
+
+
 
 
 
