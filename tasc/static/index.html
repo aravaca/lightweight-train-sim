@@ -898,6 +898,13 @@ body {
   color: #7a7264;
 }
 
+.score-arrival {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+}
+
 /* 작은 조명 인디케이터 느낌 (옵션: 필요 없으면 지워도 됨)
 .score-meta::before {
   content: "●";
@@ -1296,6 +1303,20 @@ function showScoreOverlay(finalScore, stopErr) {
     : "";
   scoreMetaEl.textContent = errText;
 
+  // 도착 시간 상태 표시
+  const arrivalEl = document.getElementById("scoreOverlayArrival");
+  if (arrivalEl && typeof window.__miniTimerRemaining === "number") {
+    const remaining = window.__miniTimerRemaining;
+    if (remaining >= 0) {
+      arrivalEl.textContent = "On time";
+      arrivalEl.style.color = "#4CAF50"; // 녹색
+    } else {
+      const lateSeconds = Math.abs(remaining);
+      arrivalEl.textContent = `${lateSeconds} seconds late`;
+      arrivalEl.style.color = "#f44336"; // 빨간색
+    }
+  }
+
   scoreOverlayEl.classList.add("visible");
 
   const duration = 1200; // ms
@@ -1554,6 +1575,7 @@ function handleObstacleState(st) {
         <div class="score-value" id="scoreOverlayValue">000</div>
         <div class="score-sub" id="scoreOverlaySub">Perfect stop!</div>
         <div class="score-meta" id="scoreOverlayMeta"></div>
+        <div class="score-arrival" id="scoreOverlayArrival"></div>
       </div>
     </div>
 
