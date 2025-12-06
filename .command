@@ -1,5 +1,5 @@
 git add .
-git commit -m "announcement bug fix"
+git commit -m "pwr table update"
 git push origin main
 
 pip install fastapi uvicorn[standard]
