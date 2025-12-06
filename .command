@@ -1,5 +1,5 @@
 git add .
-git commit -m "update line 3  dia"
+git commit -m "update line 3"
 git push origin main
 
 pip install fastapi uvicorn[standard]
