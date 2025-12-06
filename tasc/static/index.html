@@ -6243,14 +6243,14 @@ try {
       // If overspeed for > 5 seconds and EB not yet applied, trigger EB
       if (overspeedDuration > 5 && !window.__atsOverspeedTriggered) {
         window.__atsOverspeedTriggered = true;
-        window.__isEBApplied = true;
+        // window.__isEBApplied = true;
         
         console.debug('ATS OVERSPEED TRIGGERED: EB engaged, alarm playing');
         playAtsAlarm();
         
         // Send EB command to server
         if (ws && ws.readyState === WebSocket.OPEN) {
-          sendCmd('emergencyBrake', 0);
+          sendCmd('setNotch', 4);
         }
       }
     } else {
@@ -6262,9 +6262,12 @@ try {
     }
     
     // If EB was applied and train has stopped (speed near 0), allow user input again
-    if (window.__atsOverspeedTriggered && currentSpeedKmh < 0.5) {
+    if (window.__atsOverspeedTriggered && currentSpeedKmh <= maxSpeedKmh) {
       console.debug('Train stopped after overspeed - resetting ATS protection');
       resetOverspeedProtection();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          sendCmd('setNotch', 0);
+        }
     }
   }
 } catch (e) {
