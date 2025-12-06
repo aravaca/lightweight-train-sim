@@ -1503,6 +1503,34 @@ function handleObstacleState(st) {
     scheduleObstacleClear();
   }
 }
+
+// 🔹 Get ATC max speed based on remaining distance
+// Find the most restrictive speed limit where remaining_m <= distance
+// If remaining_m exceeds all thresholds, return null (no limit yet)
+function getAtcMaxSpeed(remaining_m) {
+  if (!window.__routeAtcData || !Array.isArray(window.__routeAtcData)) {
+    return null;
+  }
+  
+  let matchedSpeed = null;
+  
+  // Find all thresholds where remaining_m <= distance, pick the one with smallest distance
+  // (most restrictive limit that applies at this distance)
+  for (const entry of window.__routeAtcData) {
+    if (typeof entry.distance === 'number' && typeof entry.atc_change === 'number') {
+      // If remaining distance is within this threshold
+      if (remaining_m <= entry.distance) {
+        // Keep the smallest distance threshold (most restrictive)
+        if (matchedSpeed === null || entry.distance < matchedSpeed.distance) {
+          matchedSpeed = entry;
+        }
+      }
+    }
+  }
+  
+  return matchedSpeed ? Math.round(matchedSpeed.atc_change) : null;
+}
+
 /* Defensive runtime enforcement to override any inline width:50% */
 (function(){
   const cab = document.getElementById('cab3d');
@@ -6196,16 +6224,29 @@ miniSpeed.innerHTML = `
   <span class="unit">km/h</span>
 `;
 
-// 🔹 mini HUD – 최대 속도 (ATS)
+// 🔹 mini HUD – 최대 속도 (ATC > ATS)
 try {
-  if (window.__routeAtsValues && Array.isArray(window.__routeAtsValues) && window.__routeAtsIndex != null) {
+  let maxSpeedDisplay = null;
+  
+  // Try ATC first (higher priority)
+  if (window.__routeAtcData && Array.isArray(window.__routeAtcData)) {
+    const remaining = st.remaining_m;
+    if (typeof remaining === 'number') {
+      maxSpeedDisplay = getAtcMaxSpeed(remaining);
+    }
+  }
+  
+  // Fallback to ATS if ATC not available
+  if (maxSpeedDisplay === null && window.__routeAtsValues && Array.isArray(window.__routeAtsValues) && window.__routeAtsIndex != null) {
     const atsIdx = window.__routeAtsIndex % window.__routeAtsValues.length;
     const atsHal = window.__routeAtsValues[atsIdx];
     if (atsHal !== null && typeof atsHal === 'number') {
-      miniMaxSpeed.innerHTML = `${atsHal} <span class="unit">km/h</span>`;
-    } else {
-      miniMaxSpeed.textContent = '—';
+      maxSpeedDisplay = atsHal;
     }
+  }
+  
+  if (maxSpeedDisplay !== null && typeof maxSpeedDisplay === 'number') {
+    miniMaxSpeed.innerHTML = `${maxSpeedDisplay} <span class="unit">km/h</span>`;
   } else {
     miniMaxSpeed.textContent = '—';
   }
@@ -6213,13 +6254,21 @@ try {
   miniMaxSpeed.textContent = '—';
 }
 
-// 🔔 ATS OVERSPEED PROTECTION: Check if speed exceeds max speed
+// 🔔 ATS OVERSPEED PROTECTION: Check if speed exceeds max speed (ATC > ATS)
 try {
   const currentSpeedKmh = st.v * 3.6;
   let maxSpeedKmh = null;
   
-  // Get max speed from ATS values if available
-  if (window.__routeAtsValues && Array.isArray(window.__routeAtsValues) && window.__routeAtsIndex != null) {
+  // Get max speed from ATC first (higher priority)
+  if (window.__routeAtcData && Array.isArray(window.__routeAtcData)) {
+    const remaining = st.remaining_m;
+    if (typeof remaining === 'number') {
+      maxSpeedKmh = getAtcMaxSpeed(remaining);
+    }
+  }
+  
+  // Fallback to ATS if ATC not available
+  if (maxSpeedKmh === null && window.__routeAtsValues && Array.isArray(window.__routeAtsValues) && window.__routeAtsIndex != null) {
     const atsIdx = window.__routeAtsIndex % window.__routeAtsValues.length;
     const atsVal = window.__routeAtsValues[atsIdx];
     if (atsVal !== null && typeof atsVal === 'number') {
@@ -6227,7 +6276,7 @@ try {
     }
   }
   
-  // If no ATC data, skip overspeed check
+  // If no speed limit data, skip overspeed check
   if (maxSpeedKmh !== null) {
     const isOverspeeding = currentSpeedKmh > maxSpeedKmh;
     
@@ -7358,6 +7407,62 @@ if (window.rebuildLeftPoles) {
         }
       } catch (e) {
         window.__routeDistances = null; window.__routeDistancesIndex = 0;
+      }
+
+      // 🔹 Load ATC CSV (trainname.csv) from /static/route/atc/ folder
+      try {
+        const justName = (filePath || '').split('/').pop() || '';
+        const base = justName.replace(/\.json$/i, '');
+        if (base) {
+          const atcCsvPath = `/static/route/atc/${base}.csv`;
+          fetch(atcCsvPath + cacheBust(), { cache: 'no-store' })
+            .then(r => {
+              if (!r.ok) throw new Error('no-atc-csv');
+              return r.text();
+            })
+            .then(txt => {
+              const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+              if (lines.length <= 1) throw new Error('empty-atc-csv');
+              
+              const headers = lines[0].split(',').map(h => h.trim());
+              let distIdx = -1;
+              let atcIdx = -1;
+              
+              // Find column headers (case-insensitive)
+              for (let i = 0; i < headers.length; i++) {
+                const h = (headers[i] || '').toLowerCase().replace(/\s+/g, '');
+                if (distIdx === -1 && h.includes('distance')) distIdx = i;
+                if (atcIdx === -1 && (h.includes('atc') || h.includes('change'))) atcIdx = i;
+              }
+              
+              if (distIdx === -1 || atcIdx === -1) throw new Error('missing-columns');
+              
+              const atcData = [];
+              for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',');
+                if (cols.length > distIdx && cols.length > atcIdx) {
+                  const dist = Number(cols[distIdx].trim());
+                  const atc = Number(cols[atcIdx].trim());
+                  if (!Number.isNaN(dist) && !Number.isNaN(atc)) {
+                    atcData.push({ distance: Math.round(dist), atc_change: Math.round(atc) });
+                  }
+                }
+              }
+              
+              if (atcData.length > 0) {
+                window.__routeAtcData = atcData;
+                console.debug('ATC data loaded', atcCsvPath, 'entries:', atcData.length, 'sample:', atcData.slice(0, 3));
+              } else {
+                window.__routeAtcData = null;
+              }
+            })
+            .catch(err => {
+              window.__routeAtcData = null;
+              console.debug('ATC csv load failed (not critical)', err);
+            });
+        }
+      } catch (e) {
+        window.__routeAtcData = null;
       }
     })
     .catch(console.error);
