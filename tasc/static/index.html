@@ -3172,6 +3172,7 @@ const groundMat = new THREE.MeshStandardMaterial({
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 120000, 1, 1), groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.2;
+//진짜 땅
 ground.position.z = 200;
 ground.receiveShadow = false;
 ground.castShadow = false;
@@ -3256,16 +3257,16 @@ function createTrackCanvasTexture() {
   const railGeo = new THREE.BoxGeometry(railW, railH, railLen);
   const railL = new THREE.Mesh(railGeo, railMat);
   const railR = new THREE.Mesh(railGeo, railMat);
-  railL.position.set(-0.535, railH/2 + 0.01, 200);
-  railR.position.set( 0.535, railH/2 + 0.01, 200);
+  railL.position.set(-0.535, railH/2 + 0.05, 200);
+  railR.position.set( 0.535, railH/2 + 0.05, 200);
   railL.castShadow = false; railL.receiveShadow = false;
   railR.castShadow = false; railR.receiveShadow = false;
   scene.add(railL, railR);
   
   const railL2 = new THREE.Mesh(railGeo, railMat);
   const railR2 = new THREE.Mesh(railGeo, railMat);
-  railL2.position.set(-0.535+4, railH/2 + 0.01, 200);
-  railR2.position.set( 0.535+4, railH/2 + 0.01, 200);
+  railL2.position.set(-0.535+4, railH/2 + 0.05, 200);
+  railR2.position.set( 0.535+4, railH/2 + 0.05, 200);
   railL2.castShadow = false; railL2.receiveShadow = false;
   railR2.castShadow = false; railR2.receiveShadow = false;
   scene.add(railL2, railR2);
@@ -6329,16 +6330,23 @@ try {
   }
   
   if (maxSpeedDisplay !== null && typeof maxSpeedDisplay === 'number') {
-    miniMaxSpeed.innerHTML = `${maxSpeedDisplay} <span class="unit">km/h</span>`;
-    
-    // Check if max speed changed and play bell if it did
-    if (window.__lastMaxSpeed !== maxSpeedDisplay) {
-      window.__lastMaxSpeed = maxSpeedDisplay;
-      // Don't play alarm for N700S trains
-      const layoutKey = window.__currentCabLayoutKey || '';
-      if (layoutKey !== 'n700s') {
-        playMaxSpeedBell();
+    // Only show max speed in miniHUD if Random mode is enabled
+    const rndEl = document.getElementById('rndToggle');
+    if (rndEl && rndEl.checked) {
+      miniMaxSpeed.innerHTML = `${maxSpeedDisplay} <span class="unit">km/h</span>`;
+      
+      // Check if max speed changed and play bell if it did
+      if (window.__lastMaxSpeed !== maxSpeedDisplay) {
+        window.__lastMaxSpeed = maxSpeedDisplay;
+        // Don't play alarm for N700S trains
+        const layoutKey = window.__currentCabLayoutKey || '';
+        if (layoutKey !== 'n700s') {
+          playMaxSpeedBell();
+        }
       }
+    } else {
+      miniMaxSpeed.textContent = '—';
+      window.__lastMaxSpeed = null;
     }
   } else {
     miniMaxSpeed.textContent = '—';
@@ -6385,7 +6393,10 @@ try {
       
       // If overspeed for > 1 seconds and EB not yet applied, trigger EB
       // Also check that current notch is not brakes (notch <= 0)
-      if (overspeedDuration > 1 && !window.__atsOverspeedTriggered && st.lever_notch <= 0) {
+      // Only trigger when Random mode is on
+      const rndEl = document.getElementById('rndToggle');
+      const isRandomMode = rndEl && rndEl.checked;
+      if (overspeedDuration > 1 && !window.__atsOverspeedTriggered && st.lever_notch <= 0 && isRandomMode) {
         window.__atsOverspeedTriggered = true;
         // window.__isEBApplied = true;
         
