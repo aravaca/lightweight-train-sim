@@ -6384,7 +6384,8 @@ try {
       const overspeedDuration = (Date.now() - window.__overspeedStartTime) / 1000; // seconds
       
       // If overspeed for > 1 seconds and EB not yet applied, trigger EB
-      if (overspeedDuration > 1 && !window.__atsOverspeedTriggered) {
+      // Also check that current notch is not brakes (notch <= 0)
+      if (overspeedDuration > 1 && !window.__atsOverspeedTriggered && st.lever_notch <= 0) {
         window.__atsOverspeedTriggered = true;
         // window.__isEBApplied = true;
         
@@ -6398,7 +6399,7 @@ try {
 
         // Send EB command to server
         if (ws && ws.readyState === WebSocket.OPEN) {
-          sendCmd('setNotch', getEbIndex() - 1); // apply max service brake (EB - 1)
+          sendCmd('setNotch', getEbIndex() - 5); // apply service brake (EB - 5)
         }
       }
     } else {
