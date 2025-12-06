@@ -18,6 +18,7 @@ Supports:
 - **Emergency** scenarios including obstacles on track and rail suicides.
 - **Brake navigation** to explore efficient brake profiles (Toggle with B)
 - **Mini HUD** to assist trainees
+- Real-world diagrams that can be operated in Drive Mode
 - Realistic VVVF sounds
 - Safety systems, such as ATS & ATC
 
