@@ -16,9 +16,8 @@ Supports:
 - **Manual stop control** practice
 - **TASC-assisted automatic stopping**
 - **Emergency** scenarios including obstacles on track and rail suicides.
-- **Brake navigation** to explore efficient brake profiles (Toggle with B)
-- **Mini HUD** to assist trainees
-- Real-world time diagrams in Drive Mode
+- **Brake navigation** to explore efficient brake profiles
+- Real-world Time-Space diagrams in Drive Mode
 - VVVF sounds based on velocity-based pitch modulation 
 - Safety systems, such as ATS 
 
