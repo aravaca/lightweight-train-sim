@@ -6299,7 +6299,7 @@ try {
         
         // Send EB command to server
         if (ws && ws.readyState === WebSocket.OPEN) {
-          sendCmd('setNotch', 4);
+          sendCmd('setNotch', getEbIndex() - 1); // apply max service brake (EB - 1)
         }
       }
     } else {
@@ -6315,7 +6315,7 @@ try {
       console.debug('Train stopped after overspeed - resetting ATS protection');
       resetOverspeedProtection();
         if (ws && ws.readyState === WebSocket.OPEN) {
-          sendCmd('setNotch', 0);
+          sendCmd('setNotch', 0); // release brakes
         }
     }
   }
