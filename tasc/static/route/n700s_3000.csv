@@ -1,3 +1,3 @@
 station number,station name,arrival time,departure time,departure prep duration(sec),distance to next station(meters), travel time to next station(sec), ats, pass, end
-sta0,Shin-Kobe,10:25:00,10:25:30,30,6900,720,285, 0, 0
+sta0,Shin-Kobe,10:25:00,10:25:30,30,36900,720,285, 0, 0
 sta1,Shin-Osaka,10:37:30,10:39:00,0,0,0,285, 0, 1
