@@ -1528,7 +1528,7 @@ function getAtcMaxSpeed(remaining_m) {
     }
   }
   
-  return matchedSpeed ? Math.round(matchedSpeed.atc_change) : null;
+  return matchedSpeed ? { speed: Math.round(matchedSpeed.atc_change), bell: matchedSpeed.atc_bell || 0 } : null;
 }
 
 /* Defensive runtime enforcement to override any inline width:50% */
@@ -4818,7 +4818,11 @@ document.addEventListener('keydown', (ev) => {
       } else {
         // Fallback: attempt to play directly via HTMLAudio (best-effort)
         try {
-          const a = new Audio('/static/E233/ExternalData/Sound/Horn/HornB.wav');
+          const layoutKey = window.__currentCabLayoutKey || '';
+          const hornPath = (layoutKey == 'n700s' || layoutKey == 'ktx') 
+            ? '/static/E233/ExternalData/Sound/Horn/HornD.wav'
+            : '/static/E233/ExternalData/Sound/Horn/HornB.wav';
+          let a = new Audio(hornPath);
           a.play().catch(() => {});
         } catch (e) {}
       }
@@ -5210,7 +5214,11 @@ window.continueToNextStation = function() {
       } else if (bveSoundEngine && typeof bveSoundEngine.playDoorSound === 'function') {
         bveSoundEngine.playDoorSound();
       } else {
-        const doorAudio = new Audio('/static/E233/OriginalData/Sound/Door/DoorClose1.wav');
+        const layoutKey = window.__currentCabLayoutKey || '';
+        const doorPath = (layoutKey == 's3000')
+          ? '/static/E233/OriginalData/Sound/Door/korail_doorclose.wav'
+          : '/static/E233/OriginalData/Sound/Door/DoorClose1.wav';
+        const doorAudio = new Audio(doorPath);
         doorAudio.play().catch(()=>{});
       }
     } catch (e) {
@@ -5805,6 +5813,32 @@ async function playMaxSpeedBell() {
   }
 }
 
+// 🔔 Play ATC bell notification
+async function playAtcBell() {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    const response = await fetch('/static/E233/ExternalData/Sound/ATC/ATC-NS.mp3');
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.7;
+    
+    source.connect(gain);
+    gain.connect(audioContext.destination);
+    source.start(0);
+  } catch (e) {
+    console.debug('Error playing ATC bell:', e);
+  }
+}
+
 /* ===== 모바일 터치 조작 ===== */
 if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
   const game=document.getElementById("hud");
@@ -6322,12 +6356,17 @@ miniSpeed.innerHTML = `
 
 // 🔹 mini HUD – 최대 속도 (ATC > ATS)
 let maxSpeedDisplay = null;
+let atcBellTriggered = false;
 try {
   // Try ATC first (higher priority)
   if (window.__routeAtcData && Array.isArray(window.__routeAtcData)) {
     const remaining = st.remaining_m;
     if (typeof remaining === 'number') {
-      maxSpeedDisplay = getAtcMaxSpeed(remaining);
+      const atcResult = getAtcMaxSpeed(remaining);
+      if (atcResult && typeof atcResult === 'object') {
+        maxSpeedDisplay = atcResult.speed;
+        atcBellTriggered = atcResult.bell === 1;
+      }
     }
   }
   
@@ -6351,17 +6390,27 @@ try {
         window.__lastMaxSpeed = maxSpeedDisplay;
         // Don't play alarm for N700S trains
         const layoutKey = window.__currentCabLayoutKey || '';
-        if (layoutKey !== 'n700s') {
+        if (layoutKey !== 'n700s' && layoutKey !== 'ktx') {
           playMaxSpeedBell();
         }
+      }
+      
+      // Play ATC bell if atc_bell flag is 1 and not yet triggered
+      if (atcBellTriggered && !window.__lastAtcBellPlayed) {
+        window.__lastAtcBellPlayed = true;
+        playAtcBell();
+      } else if (!atcBellTriggered) {
+        window.__lastAtcBellPlayed = false;
       }
     } else {
       miniMaxSpeed.textContent = '—';
       window.__lastMaxSpeed = null;
+      window.__lastAtcBellPlayed = false;
     }
   } else {
     miniMaxSpeed.textContent = '—';
     window.__lastMaxSpeed = null;
+    window.__lastAtcBellPlayed = false;
   }
 } catch (e) {
   miniMaxSpeed.textContent = '—';
@@ -6376,7 +6425,10 @@ try {
   if (window.__routeAtcData && Array.isArray(window.__routeAtcData)) {
     const remaining = st.remaining_m;
     if (typeof remaining === 'number') {
-      maxSpeedKmh = getAtcMaxSpeed(remaining);
+      const atcResult = getAtcMaxSpeed(remaining);
+      if (atcResult && typeof atcResult === 'object') {
+        maxSpeedKmh = atcResult.speed;
+      }
     }
   }
   
@@ -7549,12 +7601,14 @@ if (window.rebuildLeftPoles) {
               const headers = lines[0].split(',').map(h => h.trim());
               let distIdx = -1;
               let atcIdx = -1;
+              let bellIdx = -1;
               
               // Find column headers (case-insensitive)
               for (let i = 0; i < headers.length; i++) {
                 const h = (headers[i] || '').toLowerCase().replace(/\s+/g, '');
                 if (distIdx === -1 && h.includes('distance')) distIdx = i;
                 if (atcIdx === -1 && (h.includes('atc') || h.includes('change'))) atcIdx = i;
+                if (bellIdx === -1 && h.includes('bell')) bellIdx = i;
               }
               
               if (distIdx === -1 || atcIdx === -1) throw new Error('missing-columns');
@@ -7565,8 +7619,9 @@ if (window.rebuildLeftPoles) {
                 if (cols.length > distIdx && cols.length > atcIdx) {
                   const dist = Number(cols[distIdx].trim());
                   const atc = Number(cols[atcIdx].trim());
+                  const bell = bellIdx !== -1 && cols.length > bellIdx ? Number(cols[bellIdx].trim()) : 0;
                   if (!Number.isNaN(dist) && !Number.isNaN(atc)) {
-                    atcData.push({ distance: Math.round(dist), atc_change: Math.round(atc) });
+                    atcData.push({ distance: Math.round(dist), atc_change: Math.round(atc), atc_bell: Number.isNaN(bell) ? 0 : bell });
                   }
                 }
               }
