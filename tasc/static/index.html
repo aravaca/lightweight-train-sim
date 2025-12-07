@@ -5851,6 +5851,33 @@ async function playMaxSpeedBell() {
   }
 }
 
+// 🔔 Play ATC activation sound (ATC_activate.mp3) once
+async function playAtcActivateSound() {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    const response = await fetch('/static/E233/ExternalData/Sound/ATC/ATC_activate.mp3');
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.8;
+    
+    source.connect(gain);
+    gain.connect(audioContext.destination);
+    source.start(0);
+  } catch (e) {
+    console.debug('Error playing ATC activate sound:', e);
+  }
+}
+
+
 // 🔔 Play ATC bell notification
 async function playAtcBell() {
   try {
@@ -6507,9 +6534,9 @@ try {
         const layoutKey = window.__currentCabLayoutKey || '';
         if (layoutKey !== 'n700s' && layoutKey !== 'ktx') {
             playAtsAlarm();
-        }
-
-        // Send EB command to server
+        } else{
+            playAtcActivateSound();
+        }        
         if (ws && ws.readyState === WebSocket.OPEN) {
           sendCmd('setInternalNotch', 4); // apply max service brake (EB - 1)
           sendCmd('atcOverspeed', 1); // apply max service brake (EB - 1)
@@ -6527,6 +6554,11 @@ try {
     if (window.__atsOverspeedTriggered && currentSpeedKmh <= maxSpeedKmh) {
       console.debug('Train stopped after overspeed - resetting ATS protection');
       resetOverspeedProtection();
+              const layoutKey = window.__currentCabLayoutKey || '';
+        if (layoutKey !== 'n700s' && layoutKey !== 'ktx') {
+        } else{
+            playAtcActivateSound();
+        }       
         if (ws && ws.readyState === WebSocket.OPEN) {
           sendCmd('setInternalNotch', 0); // release brakes
           sendCmd('atcOverspeed', 0); // clear overspeed flag
