@@ -4469,7 +4469,10 @@ class BveSoundEngine {
         source.loop = false;
 
         const gain = this.ctx.createGain();
-        gain.gain.value = 0.9; // Horn volume
+        const layoutKey = window.__currentCabLayoutKey || '';
+        gain.gain.value = (layoutKey == 'n700s' || layoutKey == 'ktx') 
+            ? 1.0
+            : 0.4;
 
         source.connect(gain);
         gain.connect(this.master);
