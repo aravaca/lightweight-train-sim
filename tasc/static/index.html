@@ -3292,7 +3292,7 @@ function createTrackCanvasTexture() {
 
   // rails (thin metallic extrusions) on top of the track plane for specular highlights and correct shading
   const railMat = new THREE.MeshStandardMaterial({ color:0xe0e5e5, metalness:0.95, roughness:0.28 });
-  const railH = 0.14, railW = 0.065, railLen = 120000;
+  const railH = 0.14, railW = 0.045, railLen = 120000;
   const railGeo = new THREE.BoxGeometry(railW, railH, railLen);
   const railL = new THREE.Mesh(railGeo, railMat);
   const railR = new THREE.Mesh(railGeo, railMat);
