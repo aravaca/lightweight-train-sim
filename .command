@@ -1,5 +1,5 @@
 git add .
-git commit -m "add pause function"
+git commit -m "fix pause bug in hud clock and timer"
 git push origin main
 
 pip install fastapi uvicorn[standard]
@@ -11,4 +11,3 @@ add curve track
 add more sound effects 
 add real rail texture
 play around with brake/accel val to make em smoother
-

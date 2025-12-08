@@ -5625,6 +5625,7 @@ const random_mode = !!(rndEl && rndEl.checked);
                   }
                 } catch(e){ if (miniTimer) miniTimer.textContent = String(remaining) + 's'; }
                 window.__miniTimerCountdownInterval = setInterval(()=>{
+                  if (gamePaused) return;
                   remaining = remaining - 1;
                   window.__miniTimerRemaining = remaining; // Track remaining time for scoring
                   try { 
@@ -5638,6 +5639,7 @@ const random_mode = !!(rndEl && rndEl.checked);
             }
           } catch(e) { console.debug('countdown trigger error', e); }
           window.__miniHudClockInterval = setInterval(()=>{
+            if (gamePaused) return;
             const curFmt = fmt(window.__miniHudClockCurrent);
             try { if (miniClock) miniClock.textContent = curFmt; } catch(e){}
 
@@ -5681,6 +5683,7 @@ const random_mode = !!(rndEl && rndEl.checked);
                     }
                   } catch(e){ if (miniTimer) miniTimer.textContent = String(remaining) + 's'; }
                   window.__miniTimerCountdownInterval = setInterval(()=>{
+                    if (gamePaused) return;
                     remaining = remaining - 1;
                     window.__miniTimerRemaining = remaining; // Track remaining time for scoring
                     try { 
