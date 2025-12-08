@@ -1141,7 +1141,7 @@ body {
 }
 
 #cabCard > #cab3d {
-  width: 90% !important;  /* Use full width of the parent */
+  width: 95% !important;  /* Use full width of the parent */
   margin: 0 !important;
   padding: 0 !important;
   aspect-ratio: 16/9 !important;
@@ -5965,16 +5965,11 @@ if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
 /* ===== 키보드 ===== */
 addEventListener("keydown", (e) => {
   if([" ","w","W","s","S","n","N","e","E","d","D", "a", "A", 'q', 'Q', 'p', 'P'].includes(e.key)) e.preventDefault();
-  // if(e.repeat) return;
-
-  // 🔴 Block all user input if ATS overspeed protection is active
-  // if (window.__atsOverspeedTriggered) {
-  //   console.debug('User input blocked - ATS overspeed protection active');
-  //   return;
-  // }
+  // if(e.repeat) return
 
   // 🎮 Pause/Resume game with P key
   if (e.key === "p" || e.key === "P") {
+    if(e.repeat) return;
     // Only allow pause/resume during active gameplay (not finished, not in overlay)
     if (st && !st.finished && overlay.classList.contains("hide")) {
       toggleGamePause();
