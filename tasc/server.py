@@ -47,8 +47,9 @@ class Vehicle:
     # --- 새로 추가 ---
     T_max_kN: float = 0.0 # 최대 견인력(kN) ex) KTX-1: 382
     P_max_kW: float = 0.0 # 정격/최대 출력(kW) ex) KTX-1: 13200
+    type: str = "일반"  # 차량 유형 (일반, 고속(200km/h 이상) 등)
 
-    # Davis 계수 (열차 전체) : F = A0 + B1 * v + C2 * v^2 [N], v[m/s]
+    # Davis 계수 (열차 전체) : F = A0 + B1 * v + C2 * v^2 [N], v[m/s], 기본값 (나중에 다시 열차 type에 맞게 재계산됨)
     A0: float = 1200.0
     B1: float = 30.0
     C2: float = 8.0
@@ -64,17 +65,64 @@ class Vehicle:
     davis_m_ref: float = 200000.0   # B1 기준 질량(kg) = 200t
     davis_B1_ref: float = 40.0      # B1 기준값 (N·s/m) @ 200t
 
+    # new version of recompute_davis with type handling
     def recompute_davis(self, mass_kg: Optional[float] = None):
-        """현재 총질량(kg)에 맞춰 A0, B1, C2를 현실적으로 재계산"""
+        """현재 총질량(kg)과 차량 Type에 맞춰 A0, B1, C2를 현실적으로 재계산"""
         m = float(mass_kg) if mass_kg is not None else float(self.mass_kg)
-        # C2: 공력 항력(물리식)
+        
+        # 1. [핵심] 차량 타입에 따른 물리 상수 설정 (분기 처리)
+        if self.type == "고속":
+            # [고속열차 KTX/SRT]
+            # 유선형 디자인 -> Cd(항력계수)가 매우 낮음
+            # 고속 주행 안정성 -> 기계적 마찰(베어링 등) 효율이 좋음
+            current_Cd = 0.35   # 유선형 (매우 낮음)
+            current_A = 11.2    # 고속열차는 보통 차체가 조금 더 큼 (단면적)
+            tech_efficiency = 0.85 # 일반 열차 대비 기계적 저항 15% 감소 가정
+        else:
+            # [일반열차/지하철]
+            # 박스형 디자인 -> Cd가 높음
+            current_Cd = 1.2    # 뭉툭한 형태 (일반적)
+            current_A = 10.0    # 표준 단면적
+            tech_efficiency = 1.0  # 기준값
+
+        # 2. 클래스 내부 변수 업데이트 (나중에 확인용)
+        self.Cd = current_Cd
+        self.A = current_A
+
+        # 3. Davis 계수 계산
+        
+        # [C2] 공기 항력 (Aerodynamic Drag)
+        # 고속일수록 이 값이 지배적입니다. (v^2 비례)
+        # 고속열차는 Cd가 낮아서 질량이 무거워도 C2가 지하철보다 훨씬 작게 나옵니다.
         self.C2 = 0.5 * self.rho_air * self.Cd * self.A
-        # A0: 구름/기계 상수항
-        self.A0 = self.davis_k0 * m * 9.81
-        # B1: 속도항(완만한 질량 비례)
-        self.B1 = self.davis_B1_ref * (m / max(1.0, self.davis_m_ref))
+
+        # [A0] 주행 저항 (Rolling Resistance)
+        # A0 = k0 * m * g (tech_efficiency 적용)
+        # 고속열차는 베어링 성능이 좋아 마찰이 조금 덜하다고 가정
+        self.A0 = (self.davis_k0 * tech_efficiency) * m * 9.81
+
+        # [B1] 속도 비례 저항 (Mechanical/Flange)
+        # B1 = Ref * (m / m_ref)
+        # 고속열차는 주행 안정 장치(Yaw Damper) 덕분에 뱀동(Hunting) 저항이 적음 -> 0.8배 보정
+        b1_factor = 0.8 if self.type == "고속" else 1.0
+        self.B1 = (self.davis_B1_ref * b1_factor) * (m / max(1.0, self.davis_m_ref))
+
         if DEBUG:
-            print(f"[Davis] mass={m:.0f} kg -> A0={self.A0:.1f}, B1={self.B1:.2f}, C2={self.C2:.2f}")
+            print(f"[Davis Recompute] Type={self.type}, Mass={m/1000:.1f}t")
+            print(f"   -> Result: A0={self.A0:.1f}, B1={self.B1:.2f}, C2={self.C2:.2f}")
+            print(f"   -> Params: Cd={self.Cd}, A={self.A}, TechFactor={tech_efficiency}")
+
+    # def recompute_davis(self, mass_kg: Optional[float] = None):
+    #     """현재 총질량(kg)에 맞춰 A0, B1, C2를 현실적으로 재계산"""
+    #     m = float(mass_kg) if mass_kg is not None else float(self.mass_kg)
+    #     # C2: 공력 항력(물리식)
+    #     self.C2 = 0.5 * self.rho_air * self.Cd * self.A
+    #     # A0: 구름/기계 상수항
+    #     self.A0 = self.davis_k0 * m * 9.81
+    #     # B1: 속도항(완만한 질량 비례)
+    #     self.B1 = self.davis_B1_ref * (m / max(1.0, self.davis_m_ref))
+    #     if DEBUG:
+    #         print(f"[Davis] mass={m:.0f} kg -> A0={self.A0:.1f}, B1={self.B1:.2f}, C2={self.C2:.2f}")
 
     def update_mass(self, length: int):
         """편성 량 수에 맞춰 총 질량(kg)을 업데이트"""
@@ -107,6 +155,7 @@ class Vehicle:
             # 새 필드
             T_max_kN=data.get("T_max_kN", 0.0),
             P_max_kW=data.get("P_max_kW", 0.0),
+            type=data.get("type", "일반"),
 
             # 초기값(로드 시점 값; 재계산으로 덮어씀)
             A0=data.get("davis_A0", 1200.0),

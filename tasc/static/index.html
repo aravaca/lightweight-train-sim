@@ -1962,7 +1962,7 @@ const CAB_LAYOUTS = {
   ]
 
     ],
-    speedText: { x: 710, y: 1011, fontSize: 20, letterSpacing: 3, color: '#000000', fontWeight: '700' },
+    speedText: { x: 710, y: 1014, fontSize: 24, letterSpacing: 3, color: '#000000', fontWeight: '700' },
     
     needle: {
       img: "/static/photos/black_needle.png", // 바늘 PNG 경로
@@ -3264,7 +3264,7 @@ function createTrackCanvasTexture() {
 
   // track plane: a narrow strip representing sleepers+ballast; rails will still have metallic highlights
   const trackMat = new THREE.MeshStandardMaterial({ map: trackTex, roughness: 0.85, metalness: 0.05 });
-  const trackWidth = 3.0;
+  const trackWidth = 2.5;
   const trackLen = 120000;
   const trackGeo = new THREE.PlaneGeometry(trackWidth, trackLen, 1, 1);
   const track = new THREE.Mesh(trackGeo, trackMat);
@@ -3296,16 +3296,16 @@ function createTrackCanvasTexture() {
   const railGeo = new THREE.BoxGeometry(railW, railH, railLen);
   const railL = new THREE.Mesh(railGeo, railMat);
   const railR = new THREE.Mesh(railGeo, railMat);
-  railL.position.set(-0.535, railH/2 + 0.05, 200);
-  railR.position.set( 0.535, railH/2 + 0.05, 200);
+  railL.position.set(-0.535, railH/2 + 0.1, 200); //지상으로 부터 10cm 띄워서 텍스처의 겹침현상 방지
+  railR.position.set( 0.535, railH/2 + 0.1, 200);
   railL.castShadow = false; railL.receiveShadow = false;
   railR.castShadow = false; railR.receiveShadow = false;
   scene.add(railL, railR);
   
   const railL2 = new THREE.Mesh(railGeo, railMat);
   const railR2 = new THREE.Mesh(railGeo, railMat);
-  railL2.position.set(-0.535+4, railH/2 + 0.05, 200);
-  railR2.position.set( 0.535+4, railH/2 + 0.05, 200);
+  railL2.position.set(-0.535+4, railH/2 + 0.1, 200);
+  railR2.position.set( 0.535+4, railH/2 + 0.1, 200);
   railL2.castShadow = false; railL2.receiveShadow = false;
   railR2.castShadow = false; railR2.receiveShadow = false;
   scene.add(railL2, railR2);

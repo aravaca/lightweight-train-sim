@@ -1,5 +1,6 @@
 {
   "name": "JR WEST N700S-3000",
+  "type": "고속",
   "mass_t": 43.75,
   "a_max": 0.722,
   "j_max": 0.4,

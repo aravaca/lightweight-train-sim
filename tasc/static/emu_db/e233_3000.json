@@ -1,5 +1,6 @@
 {
   "name": "JR EAST E233-3000",
+  "type": "일반",
   "mass_t": 39.9,
   "a_max": 1.0,
   "j_max": 0.7,

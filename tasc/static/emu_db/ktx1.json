@@ -1,5 +1,6 @@
 {
   "name": "KTX-I",
+  "type": "고속",
   "mass_t": 34.75,
   "a_max": 0.44,
   "j_max": 0.4,
