@@ -1,5 +1,5 @@
 git add .
-git commit -m "improve loading screen speed"
+git commit -m "add pause function"
 git push origin main
 
 pip install fastapi uvicorn[standard]

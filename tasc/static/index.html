@@ -5964,7 +5964,7 @@ if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
 
 /* ===== 키보드 ===== */
 addEventListener("keydown", (e) => {
-  if([" ","w","W","s","S","n","N","e","E","d","D", "a", "A", 'q', 'Q'].includes(e.key)) e.preventDefault();
+  if([" ","w","W","s","S","n","N","e","E","d","D", "a", "A", 'q', 'Q', 'p', 'P'].includes(e.key)) e.preventDefault();
   if(e.repeat) return;
 
   // 🔴 Block all user input if ATS overspeed protection is active
@@ -5972,6 +5972,20 @@ addEventListener("keydown", (e) => {
   //   console.debug('User input blocked - ATS overspeed protection active');
   //   return;
   // }
+
+  // 🎮 Pause/Resume game with P key
+  if (e.key === "p" || e.key === "P") {
+    // Only allow pause/resume during active gameplay (not finished, not in overlay)
+    if (st && !st.finished && overlay.classList.contains("hide")) {
+      toggleGamePause();
+    }
+    return;
+  }
+
+  // If game is paused, ignore all other game controls
+  if (gamePaused) {
+    return;
+  }
 
   if (e.key === " ") {
     // Check state before taking action
@@ -6068,6 +6082,104 @@ addEventListener("keydown", (e) => {
 /* ===== HUD & 상태 ===== */
 const grade_percentEl=document.getElementById("grade_percent");
 let isFinished=false, overlayShowingResult=false, st=null, lastTimestamp=0, prevMaxDistance=0;
+
+// 🎮 Pause state management
+let gamePaused = false;
+let pauseOverlay = null;
+
+// Create pause overlay on page load
+function initPauseOverlay() {
+  if (pauseOverlay) return;
+  
+  pauseOverlay = document.createElement('div');
+  pauseOverlay.id = 'pauseOverlay';
+  pauseOverlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    font-family: "A-OTF Shin Go Pro", system-ui, sans-serif;
+    backdrop-filter: blur(4px);
+  `;
+  
+  pauseOverlay.innerHTML = `
+    <div style="
+      background: rgba(30, 40, 60, 0.95);
+      padding: 60px;
+      border-radius: 16px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border: 2px solid rgba(96, 165, 250, 0.3);
+    ">
+      <div style="
+        font-size: 56px;
+        font-weight: 700;
+        color: #60a5fa;
+        margin-bottom: 24px;
+        letter-spacing: 1px;
+      ">⏸ PAUSED</div>
+      <div style="
+        font-size: 18px;
+        color: #cbd5e1;
+        margin-bottom: 32px;
+        letter-spacing: 0.5px;
+      ">Press <span style="color: #fbbf24; font-weight: 600;">P</span> to resume</div>
+      <div style="
+        font-size: 14px;
+        color: #94a3b8;
+        letter-spacing: 0.5px;
+      ">Game paused • All systems on hold</div>
+    </div>
+  `;
+  
+  document.body.appendChild(pauseOverlay);
+}
+
+function toggleGamePause() {
+  initPauseOverlay();
+  
+  gamePaused = !gamePaused;
+  
+  if (gamePaused) {
+    pauseOverlay.style.display = 'flex';
+    
+    // Send pause command to server
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'cmd', payload: { name: 'pause' } }));
+    }
+    
+    // Show feedback
+    if (fb) {
+      fb.innerHTML = '<div class="ok">게임 일시정지됨 (P로 계속)</div>';
+      setTimeout(() => {
+        if (!st || !st.finished) fb.textContent = "Space로 시작. W/S로 브레이크 조절하세요.";
+      }, 2000);
+    }
+  } else {
+    pauseOverlay.style.display = 'none';
+    
+    // Send resume command to server
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'cmd', payload: { name: 'resume' } }));
+    }
+    
+    // Show feedback
+    if (fb) {
+      fb.innerHTML = '<div class="ok">게임 재개됨</div>';
+      setTimeout(() => {
+        if (!st || !st.finished) fb.textContent = "Space로 시작. W/S로 브레이크 조절하세요.";
+      }, 1000);
+    }
+  }
+}
+
 // function loop(ts){ if(!lastTimestamp) lastTimestamp=ts; lastTimestamp=ts; if(st) drawHUD(st); requestAnimationFrame(loop); }
 // requestAnimationFrame(loop);
 
@@ -7842,7 +7954,7 @@ window.__brakeGuideOn = true;
       labelDown: "완화",
       labelRelease: "중립",
       subtitleIntro: 
-  "E235계열 차량의 TASC 활성화 시 사용법: <b>250m</b> 지점 전에 주간제어기를 <b>제동 1단</b>으로 체결해주세요. 그 이후에는 <b>TASC, 자동정차</b>가 이루어집니다.",
+  "E235계열 차량의 TASC 활성화 시 사용법: <b>300m</b> 지점 전에 주간제어기를 <b>B1단</b>으로 체결해주세요. 그 이후에는 <b>TASC, 자동정차</b>가 이루어집니다.",
 
       labelTASC: "TASC",
       labelTrain: "전동차",
@@ -7898,7 +8010,7 @@ window.__brakeGuideOn = true;
       labelDown: "B-",
       labelRelease: "Release",
       subtitleIntro: 
-"E235 series TASC instructions: Before the <b>250m</b> point, set the master controller to <b>Brake Notch 1</b>. After that, TASC will handle automatic stopping.",
+"E235 series TASC instructions: Before the <b>300m</b> point, put the master controller at <b>B1</b>. After that, TASC will handle automatic stopping.",
       labelTASC: "TASC",
       labelTrain: "EMU",
       labelSeries: "Series",

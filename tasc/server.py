@@ -214,6 +214,7 @@ class State:
     residual_speed_kmh: Optional[float] = None
     score: Optional[int] = None
     running: bool = False
+    paused: bool = False  # 🎮 게임 일시정지 상태
 
     # ▼ 타이머(카운트다운): float 원본 + 정수 표시값
     time_budget_s: float = 0.0            # 스테이지 부여 시간(초)
@@ -2023,6 +2024,18 @@ async def ws_endpoint(ws: WebSocket):
                     sim.state.timer_enabled = True
                     sim.reset()
                 
+                elif name == "pause":
+                    # 🎮 게임 일시정지
+                    sim.state.paused = True
+                    if DEBUG:
+                        print(f"[PAUSE] Game paused at t={sim.state.t:.2f}s, v={sim.state.v*3.6:.1f}km/h")
+
+                elif name == "resume":
+                    # 🎮 게임 재개
+                    sim.state.paused = False
+                    if DEBUG:
+                        print(f"[RESUME] Game resumed from t={sim.state.t:.2f}s, v={sim.state.v*3.6:.1f}km/h")
+                
                 else:
                      cmd_val = payload.get("val", payload.get("delta", 0))
                      sim.queue_command(name, cmd_val)    
@@ -2043,6 +2056,7 @@ async def ws_endpoint(ws: WebSocket):
         t_start = None  # 시작 시점은 start() 눌렀을 때 설정
         was_running = False
         was_finished = False
+        was_paused = False
         loop_iterations = 0
 
         while True:
@@ -2062,7 +2076,20 @@ async def ws_endpoint(ws: WebSocket):
                     step_count = 0
                 was_finished = is_finished_now
             
-            if sim.running:
+            # 🎮 게임 일시정지 상태 확인
+            is_paused_now = getattr(sim.state, 'paused', False)
+            if is_paused_now and not was_paused:
+                if DEBUG:
+                    print(f"[SIM_LOOP] Game paused (iteration {loop_iterations})")
+            elif not is_paused_now and was_paused:
+                if DEBUG:
+                    print(f"[SIM_LOOP] Game resumed (iteration {loop_iterations})")
+                # 일시정지에서 복귀하면 시간 기준점을 갱신
+                t_start = time.time()
+                step_count = 0
+            was_paused = is_paused_now
+            
+            if sim.running and not is_paused_now:  # 게임 실행 중이고 일시정지 아님
                 if not was_running:
                     if DEBUG:
                         print(f"[SIM_LOOP] Transitioned to running state (iteration {loop_iterations})")
