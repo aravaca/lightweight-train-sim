@@ -75,15 +75,15 @@ class Vehicle:
             # [고속열차 KTX/SRT]
             # 유선형 디자인 -> Cd(항력계수)가 매우 낮음
             # 고속 주행 안정성 -> 기계적 마찰(베어링 등) 효율이 좋음
-            current_Cd = 0.35   # 유선형 (매우 낮음)
+            current_Cd = 1.0   # 유선형 (매우 낮음)
             current_A = 11.2    # 고속열차는 보통 차체가 조금 더 큼 (단면적)
-            tech_efficiency = 0.85 # 일반 열차 대비 기계적 저항 15% 감소 가정
+            tech_efficiency = 0.9 # 일반 열차 대비 기계적 저항 15% 감소 가정
         else:
             # [일반열차/지하철]
             # 박스형 디자인 -> Cd가 높음
             current_Cd = 1.2    # 뭉툭한 형태 (일반적)
             current_A = 10.0    # 표준 단면적
-            tech_efficiency = 1.0  # 기준값
+            tech_efficiency = 0.9  # 기준값
 
         # 2. 클래스 내부 변수 업데이트 (나중에 확인용)
         self.Cd = current_Cd
@@ -916,8 +916,8 @@ class StoppingSim:
             # 한계 속도 근처 10km/h 구간에서 서서히 힘을 0으로 줄임
             
             # 1. 튜닝 옵션
-            cutoff_range = 10.0      # 서서히 힘이 빠지는 구간 길이 (km/h)
-            min_residual = 0.18      # 한계 돌파 시 남겨둘 최소 힘 비율 (5%)
+            cutoff_range = 30.0      # 서서히 힘이 빠지는 구간 길이 (km/h)
+            min_residual = 0.35      # 한계 돌파 시 남겨둘 최소 힘 비율 (5%)
                                      # 0.17 ~ 0.18 추천. 너무 크면 계속 가속되고 너무 작으면 정속 주행이 안됨
 
             # 2. 로직 적용
@@ -1588,24 +1588,24 @@ class StoppingSim:
             "train_name": self.veh.name,
             "maxSpeed_kmh": self.veh.maxSpeed_kmh,
 
-            # HUD/디버그용 (업데이트된 Davis 확인 가능)
-            "mu": float(self.scn.mu),
-            "rr_factor": float(self.rr_factor),
-            "davis_A0": self.veh.A0,
-            "davis_B1": self.veh.B1,
-            "davis_C2": self.veh.C2,
+            # # HUD/디버그용 (업데이트된 Davis 확인 가능)
+            # "mu": float(self.scn.mu),
+            # "rr_factor": float(self.rr_factor),
+            # "davis_A0": self.veh.A0,
+            # "davis_B1": self.veh.B1,
+            # "davis_C2": self.veh.C2,
 
-            # ▼ 타이머 표시용
-            "timer_enabled": st.timer_enabled,
-            "time_budget_s": st.time_budget_s,
-            "time_remaining_s": st.time_remaining_s,     # float 원본(음수 가능)
-            "time_remaining_int": st.time_remaining_int, # 정수 표시(내림)
-            "time_overrun_s": st.time_overrun_s,
-            "time_overrun_int": st.time_overrun_int,
-            "time_overrun_started": st.time_overrun_started,
+            # # ▼ 타이머 표시용
+            # "timer_enabled": st.timer_enabled,
+            # "time_budget_s": st.time_budget_s,
+            # "time_remaining_s": st.time_remaining_s,     # float 원본(음수 가능)
+            # "time_remaining_int": st.time_remaining_int, # 정수 표시(내림)
+            # "time_overrun_s": st.time_overrun_s,
+            # "time_overrun_int": st.time_overrun_int,
+            # "time_overrun_started": st.time_overrun_started,
 
-            # 입력 보정 정보(서버 클램프)
-            "input_sanitized": getattr(self, "last_input_sanitized", {}),
+            # # 입력 보정 정보(서버 클램프)
+            # "input_sanitized": getattr(self, "last_input_sanitized", {}),
         }
 
 

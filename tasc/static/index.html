@@ -3233,6 +3233,7 @@ ground.position.z = 200;
 ground.receiveShadow = false; 
 ground.castShadow = false;
 scene.add(ground);
+
 // --- 1. 설정: 텍스처 목록과 빈도(weight) 정의 ---
 // 여기에 섞어 쓰고 싶은 이미지 경로를 추가하세요.
 // const wallConfigs = [
@@ -3372,7 +3373,7 @@ scene.add(ground);
   const railR = new THREE.Mesh(railGeo, railMat);
   railR.rotation.x = -Math.PI/2;
   railR.rotation.z = -Math.PI; // Opposite tilt
-  railR.position.set(s, 0.1, 200);
+  railR.position.set(s-0.5, 0.1, 200);
   railR.castShadow = false;
   railR.receiveShadow = false;
   scene.add(railR);
@@ -3381,7 +3382,7 @@ scene.add(ground);
   const railL2 = new THREE.Mesh(railGeo, railMat);
   railL2.rotation.x = -Math.PI/2;
   railL2.rotation.z = Math.PI;
-  railL2.position.set(-s+4, 0.1, 200);
+  railL2.position.set(-s+4+0.5, 0.1, 200);
   railL2.castShadow = false;
   railL2.receiveShadow = false;
   scene.add(railL2);
