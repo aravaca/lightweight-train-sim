@@ -3568,47 +3568,128 @@ platR.receiveShadow = false; platR.castShadow = false; scene.add(platR);
 const platLineR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.01, platformLen), platMatEdge);
 platLineR.position.set(-2.0915-0.3, platH +0.01, platZ - platformLen / 2); // 좌측과 동일한 높이로 설정
 platLineR.receiveShadow = false; platLineR.castShadow = false; scene.add(platLineR);
+// --- 스크린도어 (PSD) 설정 ---
+let psdGroup = new THREE.Group();
+scene.add(psdGroup);
+
+// 1. 텍스처 및 재질 미리 로드
+const psdTexture = textureLoader.load('/static/textures/wall/psd1.jpg', function(tex) {
+    tex.wrapS = THREE.RepeatWrapping; 
+    tex.wrapT = THREE.RepeatWrapping;
+    // 경고 메시지 해결: encoding 대신 colorSpace 사용
+    tex.colorSpace = THREE.SRGBColorSpace; 
+});
+
+const psdMat = new THREE.MeshBasicMaterial({
+    map: psdTexture,
+    side: THREE.DoubleSide
+});
+
+// 마지막으로 확인한 열차 이름을 저장할 변수
+let lastCheckedTrainName = null;
+
+// 2. 스크린도어 생성/제거 함수
+function buildScreenDoors(len) {
+    // 현재 열차 이름 가져오기
+    const currentTrainName = (window.st && window.st.train_name) ? window.st.train_name : '';
+    const lowerName = currentTrainName.toLowerCase();
+
+    // 디버깅용 로그 (이름이 바뀔 때만 출력)
+    if (currentTrainName !== lastCheckedTrainName) {
+        console.log(`[PSD System] 열차 변경 감지: "${lastCheckedTrainName}" -> "${currentTrainName}"`);
+        lastCheckedTrainName = currentTrainName; // 업데이트
+    }
+
+    // --- 조건 확인 ---
+    // "seoul metro 3000" 문자열이 포함되어 있는지 확인
+    // 혹시 모르니 "3000"이나 "vvvf" 같은 키워드로도 걸리게 범위를 넓히고 싶다면 조건을 수정하세요.
+    const isTargetTrain = lowerName.includes('seoul metro 3000');
+
+    // 일단 무조건 기존 스크린도어 싹 지움 (리셋)
+    while (psdGroup.children.length) {
+        const child = psdGroup.children.pop();
+        if (child.geometry) child.geometry.dispose();
+    }
+
+    // 조건이 안 맞으면 여기서 끝 (지워진 상태 유지)
+    if (!isTargetTrain) {
+        return; 
+    }
+
+    console.log("✅ 타겟 열차 확인됨! 스크린도어를 설치합니다.");
+
+    // --- 생성 로직 ---
+    const psdHeight = 2.3;
+    const psdThick = 0.3;
+    const segmentLength = 5.0; 
+
+    if (psdTexture) {
+        const repeatCount = len / segmentLength;
+        psdTexture.repeat.set(repeatCount, 1); 
+        psdTexture.needsUpdate = true;
+    }
+
+    const geometry = new THREE.BoxGeometry(psdThick, psdHeight, len);
+    const psdMesh = new THREE.Mesh(geometry, psdMat);
+    
+    // 위치 설정 (노란선 안쪽)
+    psdMesh.position.set(-1.85, platH + (psdHeight / 2), platZ - (len / 2));
+    
+    psdGroup.add(psdMesh);
+}
+
+// 전역 등록
+window.__rebuildPSD = buildScreenDoors;
 
 
-// 플랫폼 길이 동적 변경 헬퍼
+// 3. [핵심 수정] 지속적인 상태 감시 (Monitoring)
+// 1초마다 열차 이름이 바뀌었는지 검사합니다.
+setInterval(() => {
+    // window.st가 존재할 때만
+    if (window.st && window.st.train_name) {
+        // 현재 이름이 저장된 마지막 이름과 다르면 -> 다시 빌드 실행
+        if (window.st.train_name !== lastCheckedTrainName) {
+            buildScreenDoors(platformLen);
+        }
+    }
+}, 1000); // 1초 간격 반복
+
+
+// --- 플랫폼 길이 동적 변경 헬퍼 (기존 유지) ---
 window.__updatePlatformLength = function(newLen) {
   try {
-    // 좌측 플랫폼 길이와 라인 업데이트
     if (plat.geometry) plat.geometry.dispose();
     if (platLine.geometry) platLine.geometry.dispose();
-
     plat.geometry = new THREE.BoxGeometry(platW, platH, newLen);
     plat.position.set(+2.4 + 4.9415, platH / 2, platZ - newLen / 2);
-
     platLine.geometry = new THREE.BoxGeometry(0.2, 0.01, newLen);
     platLine.position.set(+1.55 + 4.9415, platH + 0.01, platZ - newLen / 2);
 
-    // 우측 플랫폼 길이와 라인 업데이트
     if (platR.geometry) platR.geometry.dispose();
     if (platLineR.geometry) platLineR.geometry.dispose();
-
     platR.geometry = new THREE.BoxGeometry(platW, platH, newLen);
-    platR.position.set(-2.9415, platH / 2, platZ - newLen / 2);
-
+    platR.position.set(-2.9415 - 0.3, platH / 2, platZ - newLen / 2);
     platLineR.geometry = new THREE.BoxGeometry(0.2, 0.01, newLen);
-    platLineR.position.set(-2.0915, platH + 0.01, platZ - newLen / 2);
+    platLineR.position.set(-2.0915 - 0.3, platH + 0.01, platZ - newLen / 2);
 
-      //  1) 현재 플랫폼 길이 상태 갱신
     platformLen = newLen;
 
-    //  2) 사람 다시 뿌리기 (길이에 비례해서 인원 수 조절)
     if (window.spawnPeopleOnPlatform) {
-      const baseCount = 30; // 210m일 때 30명
-      const factor = newLen / 210; // 길이 비례
+      const baseCount = 30; 
+      const factor = newLen / 210; 
       window.spawnPeopleOnPlatform(Math.round(baseCount * factor));
     }
 
-    //  3) 기둥 + 지붕 + 램프도 새 길이에 맞게 리빌드
     if (window.__rebuildPlatformRoof) {
       window.__rebuildPlatformRoof(newLen);
     }
+    
+    // 길이 변경 시 강제 리빌드
+    if (window.__rebuildPSD) {
+        window.__rebuildPSD(newLen);
+    }
 
-  } catch(e) { /* non-fatal */ }
+  } catch(e) { console.error(e); }
 };
   // --- 플랫폼 기둥 및 지붕 추가 (간단한 구조로 분위기 향상) ---
 (function initPlatformRoof(){
