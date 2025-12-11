@@ -3603,7 +3603,7 @@ function buildScreenDoors(len) {
     // --- 조건 확인 ---
     // "seoul metro 3000" 문자열이 포함되어 있는지 확인
     // 혹시 모르니 "3000"이나 "vvvf" 같은 키워드로도 걸리게 범위를 넓히고 싶다면 조건을 수정하세요.
-    const isTargetTrain = lowerName.includes('seoul metro 3000');
+    const isTargetTrain = lowerName.includes('seoul metro 3000') || lowerName.includes('e235');
 
     // 일단 무조건 기존 스크린도어 싹 지움 (리셋)
     while (psdGroup.children.length) {
