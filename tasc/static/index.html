@@ -6812,7 +6812,7 @@ try {
   
   // If no speed limit data, skip overspeed check
   if (maxSpeedKmh !== null) {
-    const isOverspeeding = currentSpeedKmh > maxSpeedKmh;
+    const isOverspeeding = currentSpeedKmh > maxSpeedKmh + 1; // 1 km/h 허용 오차
     
     if (isOverspeeding) {
       // Train is overspeeding
