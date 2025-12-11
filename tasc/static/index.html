@@ -6920,7 +6920,7 @@ if (typeof st.remaining_m === 'number') {
   const currentDist = st.remaining_m || 0;
   
   // Fix grade to 0 when approaching platform (< 1000m)
-  if (currentDist < 1000) {
+  if (isRndOn && isKtxOrN700s && currentDist < 1000) {
     displayGrade = 0;
     currentRandomGrade = 0;
     // Send reset grade to server if needed
