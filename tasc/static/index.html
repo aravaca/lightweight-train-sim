@@ -6949,7 +6949,7 @@ if (typeof st.remaining_m === 'number') {
       
       // Send grade update to server
       if (ws && ws.readyState === WebSocket.OPEN) {
-        const newGradePercent = currentRandomGrade;
+        const newGradePercent = currentRandomGrade / 10;
         ws.send(JSON.stringify({ 
           type: 'cmd', 
           payload: { 
@@ -6960,7 +6960,7 @@ if (typeof st.remaining_m === 'number') {
       }
     }
     
-    displayGrade = currentRandomGrade; // Convert to match st.grade_percent format
+    displayGrade = currentRandomGrade / 10; // Convert to match st.grade_percent format
   } else {
     // Reset when toggle is off or train doesn't match
     lastRandomizedDistance = currentDist;
@@ -6969,7 +6969,7 @@ if (typeof st.remaining_m === 'number') {
   }
 }
 
-grade_percentEl.textContent = (displayGrade).toFixed(1);
+grade_percentEl.textContent = (10 * displayGrade).toFixed(1);
 
 if (miniGrade) {
   miniGrade.innerHTML = `
