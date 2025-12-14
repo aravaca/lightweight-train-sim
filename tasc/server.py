@@ -72,9 +72,9 @@ class Vehicle:
         
         # 1. [핵심] 차량 타입에 따른 물리 상수 설정 (분기 처리)
         if self.type == "고속":
-            current_Cd = 0.22 # 0.15~0.30 권장 시작점
-            current_A = 10.5 # 9~12 m^2 정도에서 튜닝
-            tech_efficiency = 0.85
+            current_Cd = 0.30 # 0.15~0.30 권장 시작점
+            current_A = 12 # 9~12 m^2 정도에서 튜닝
+            tech_efficiency = 0.90
         else:
             current_Cd = 1.1 # 0.8~1.4
             current_A = 9.5
@@ -933,7 +933,7 @@ class StoppingSim:
                 # 목표: 공기 저항을 이기고 속도를 유지(Cruising)하거나 가속하기 위함.
                 # cutoff_range: 고속에서는 관성이 크므로 미리 힘을 조절하기 위해 넓게 잡음 (40km/h)
                 # min_residual: 고속 주행 시 공기저항 상쇄를 위해 일정 힘 유지 (0.4)
-                cutoff_range = 10.0
+                cutoff_range = 20.0
                 min_residual = 0.2
 
             # ... (Proceed with the calculation using cutoff_range and min_residual) ...
