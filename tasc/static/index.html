@@ -2703,10 +2703,20 @@ function _updateNoiseForSpeed(v_ms) {
 }
 
 // 메시지 수신에서 상태를 보고 속도(v)가 임계치 이하이면 재생, 아니면 페이드아웃
+// ===== 클라이언트 측 상태 보간 (60Hz 렌더링용) =====
+let lastState = null;
+let lastStateTime = 0;
+
 ws.addEventListener('message', (ev) => {
   try {
     const msg = JSON.parse(ev.data);
     if (msg && msg.type === 'state' && msg.payload) {
+      const currentTime = performance.now();
+      
+      // 새 상태 저장 (보간 기준)
+      lastState = msg.payload;
+      lastStateTime = currentTime;
+      
       const v = Number(msg.payload.v) || 0; // m/s
       _updateNoiseForSpeed(v);
     }
@@ -2714,6 +2724,30 @@ ws.addEventListener('message', (ev) => {
     // ignore invalid JSON or other parsing errors
   }
 });
+
+// 보간된 상태 반환 (60Hz 렌더링에서 사용)
+function getInterpolatedState() {
+  if (!lastState) return null;
+  
+  const currentTime = performance.now();
+  const dt = (currentTime - lastStateTime) / 1000; // 초 단위
+  
+  // 최대 100ms까지만 보간 (그 이상은 상태가 오래됨)
+  if (dt > 0.1) {
+    return lastState;
+  }
+  
+  // 선형 보간: 위치, 속도는 가속도 기반으로 추정
+  const interp = JSON.parse(JSON.stringify(lastState));
+  const a = lastState.a || 0;
+  
+  // s = s0 + v*dt + 0.5*a*dt^2
+  interp.s = (lastState.s || 0) + (lastState.v || 0) * dt + 0.5 * a * dt * dt;
+  // v = v0 + a*dt
+  interp.v = Math.max(0, (lastState.v || 0) + a * dt);
+  
+  return interp;
+}
 
 const icons = [
   "/static/logos/e233_logo.png",
@@ -2845,6 +2879,59 @@ const overlay=document.getElementById("overlay"),
   // --- Three.js 기본 ---
 const scene = new THREE.Scene();
 
+  // ===== 📸 Skydome (360° 파노라마 배경) =====
+  let skydome = null;
+  
+  // 먼저 기본 배경을 위한 구를 만들되, 텍스처는 로드 후에 적용
+  // 더 높은 세그먼트로 UV가 제대로 매핑되도록
+  const skydomeGeometry = new THREE.SphereGeometry(5000, 128, 128);
+  const skydomeBaseMaterial = new THREE.MeshBasicMaterial({
+    color: 0x87CEEB,  // 하늘색
+    side: THREE.BackSide,
+    toneMapped: false
+  });
+  skydome = new THREE.Mesh(skydomeGeometry, skydomeBaseMaterial);
+  scene.add(skydome);
+  
+  console.log('[Background] ✓ 고정 배경 설정 시작');
+  
+  // 고정 배경으로 city.jpg 로드
+  const textureLoaderBg = new THREE.TextureLoader();
+  textureLoaderBg.load(
+    '/static/textures/background/sky.jpg',
+    function(texture) {
+      console.log('[Background] ✓ 텍스처 로드 시작');
+      
+      // Equirectangular 배경 설정
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.magFilter = THREE.LinearFilter;
+      texture.minFilter = THREE.LinearMipMapLinearFilter;
+      texture.generateMipmaps = true;
+      
+      // 배경으로 설정 (카메라 움직임에 관계없이 고정)
+      scene.background = texture;
+      
+      // 스카이돔 메시 비활성화
+      if (skydome) {
+        skydome.visible = false;
+      }
+      
+      console.log('[Background] ✓ 고정 배경 적용 완료!');
+    },
+    function(progress) {
+      if (progress.total > 0) {
+        const percent = (progress.loaded / progress.total * 100).toFixed(1);
+        console.log('[Background] 로딩 중... ' + percent + '%');
+      }
+    },
+    function(error) {
+      console.error('[Background] ✗ 배경 로드 실패!');
+      console.error('[Background] 경로: /static/textures/background/nightcity.jpg');
+      console.error('[Background] 에러 상세:', error);
+    }
+  );
+  
+
   let timeOfDay = "day";
   let daySkyTex, nightSkyTex;
 
@@ -2904,16 +2991,17 @@ const scene = new THREE.Scene();
 
   daySkyTex = createSkyTexture(true);
   nightSkyTex = createSkyTexture(false);
-  scene.background = daySkyTex;
+  // scene.background는 스카이돔이 항상 보이도록 투명색으로 설정
+  scene.background = new THREE.Color(0x000000);  // 검은색 (skydome이 보여야 함)
 
   // use actual mount size for correct aspect ratio so canvas fills its container
   const initialW = mount.clientWidth || Math.max(800, window.innerWidth);
   const initialH = mount.clientHeight || Math.max(450, Math.round(initialW * 9/16));
  const camera = new THREE.PerspectiveCamera(
-  45,           // FOV (Field of View): 45도 (자연스러운 시야, 전방과 주변을 잘 볼 수 있도록 설정)
+  35,           // FOV (Field of View): 45도 (자연스러운 시야, 전방과 주변을 잘 볼 수 있도록 설정)
   initialW / initialH, // 종횡비 (화면의 너비와 높이 비율)
   0.1,          // Near plane: 0.1 (카메라가 볼 수 있는 가장 가까운 거리)
-  1000          // Far plane: 300 (카메라가 볼 수 있는 가장 먼 거리, 전철 시뮬에서는 충분히 먼 거리)
+  10000         // Far plane: 10000 (스카이돔 반지름보다 커야 함)
 );
 
   
@@ -2935,6 +3023,14 @@ const scene = new THREE.Scene();
   headlight.position.set(0, 0, 0);
   headlight.target = headlightTarget;
   scene.add(camera); // 카메라도 씬에 넣어줘야 자식 라이트가 적용됨
+
+  // ===== 스카이돔을 카메라에 붙이기 (항상 카메라 중심에 위치) =====
+  // skydome이 카메라의 자식이므로 카메라가 어디든 이동해도 항상 보임
+  if (skydome) {
+    skydome.position.set(0, 0, 0);  // 카메라 위치가 0,0,0일 때 skydome도 0,0,0
+    camera.add(skydome);  // skydome을 카메라의 자식으로 설정
+    console.log('[Skydome] ✓ 스카이돔을 카메라에 부착 완료');
+  }
 
   // const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
   const renderer = new THREE.WebGLRenderer({
@@ -3034,8 +3130,7 @@ let lastFpsCheck = performance.now();
 let frames = 0;
 
   // --- 텍스처 로더 ---
-  const texLoader = new THREE.TextureLoader();
-
+let texLoader = new THREE.TextureLoader();
 // =======================
 // 👤 사람 텍스처 여러 개 로딩
 // =======================
@@ -3203,7 +3298,7 @@ window.clearEmergencyObstacle = clearEmergencyObstacle;
 
 
 // 2. 텍스처 로드 (따옴표 안에 가지고 계신 이미지 파일 경로를 넣으세요)
-const groundTexture = textureLoader.load('/static/textures/ground/greyasp.avif');
+const groundTexture = textureLoader.load('/static/textures/ground/lgrass.jpg');
 
 // 3. 텍스처 반복 설정 (매우 중요!)
 // 지반이 아주 길기 때문에 반복 설정을 하지 않으면 이미지가 심하게 늘어납니다.
@@ -3213,7 +3308,7 @@ groundTexture.wrapT = THREE.RepeatWrapping; // 세로 방향 반복 허용
 // 반복 횟수 설정: (가로 반복 횟수, 세로 반복 횟수)
 // 지반 길이(120000)가 매우 기므로 세로 반복을 큰 숫자(예: 6000)로 잡아야 비율이 맞습니다.
 // 이미지가 너무 촘촘하면 숫자를 줄이고, 너무 늘어지면 숫자를 늘리세요.
-groundTexture.repeat.set(1, 8000); 
+groundTexture.repeat.set(200 , 2000); 
 
 // 색상 보정 (선택 사항, 이미지가 너무 어둡거나 밝으면 확인)
 groundTexture.colorSpace = THREE.SRGBColorSpace; 
@@ -3226,119 +3321,50 @@ const groundMat = new THREE.MeshStandardMaterial({
 });
 
 // --- Mesh 생성 (기존과 동일) ---
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(15, 120000, 1, 1), groundMat);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1500, 120000, 1, 1), groundMat);
 ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.2;
+ground.position.y = -2.5;
 ground.position.z = 200;
 ground.receiveShadow = false; 
 ground.castShadow = false;
 scene.add(ground);
 
-// --- 1. 설정: 텍스처 목록과 빈도(weight) 정의 ---
-// 여기에 섞어 쓰고 싶은 이미지 경로를 추가하세요.
-// const wallConfigs = [
-//   { 
-//     path: '/static/textures/wall/ad/45ad1.png', // 메인 텍스처
-//     weight: 1 // 10만큼의 비중 (가장 많이 나옴)
-//   },
-//   { 
-//     path: '/static/textures/wall/ad/45ad2.png', // 메인 텍스처
-//     weight: 1 // 10만큼의 비중 (가장 많이 나옴)
-//   },
-//   { 
-//     path: '/static/textures/wall/ad/45ad3.png', // 메인 텍스처
-//     weight: 1 // 10만큼의 비중 (가장 많이 나옴)
-//   },
-//   { 
-//     path: '/static/textures/wall/stawall/stawall.png', // 섞을 다른 텍스처 (예시)
-//     weight: 10  // 1만큼의 비중 (가끔 나옴)
-//   },
-//   { 
-//     path: '/static/textures/wall/stawall/stawall_1.png', // 섞을 다른 텍스처 (예시)
-//     weight: 10  // 1만큼의 비중 (가끔 나옴)
-//   },
-//   { 
-//     path: '/static/textures/wall/stawall/44stawall.png', // 섞을 다른 텍스처 (예시)
-//     weight: 1  // 1만큼의 비중 (가끔 나옴)
-//   },
-//   // 필요하면 여기에 { path: '...', weight: N } 형태로 계속 추가 가능
-// ];
+// 1. 중앙 도로용 텍스처 로드 (새로운 이미지 경로를 넣으세요)
+// 예: 아스팔트, 흙길 등
+const roadTexture = textureLoader.load('/static/textures/ground/greyasp.avif'); 
 
-// // --- 2. 텍스처 및 머티리얼 미리 로드 ---
-// // 렉 방지를 위해 미리 로딩해둡니다.
-// const loadedMaterials = [];
-// let totalWeight = 0;
+// 2. 도로 텍스처 반복 설정
+roadTexture.wrapS = THREE.RepeatWrapping;
+roadTexture.wrapT = THREE.RepeatWrapping;
 
-// wallConfigs.forEach(config => {
-//   const tex = textureLoader.load(config.path);
-//   tex.colorSpace = THREE.SRGBColorSpace;
-  
-//   // 패널 하나에 이미지가 꽉 차게 보이도록 설정
-//   // (작은 조각들을 이어 붙이므로 repeat 설정이 필요 없습니다)
-  
-//   const mat = new THREE.MeshBasicMaterial({ 
-//     map: tex, 
-//     side: THREE.DoubleSide 
-//   });
-  
-//   loadedMaterials.push({ material: mat, weight: config.weight });
-//   totalWeight += config.weight;
-// });
+// 중요: 도로는 폭이 좁고(15) 길이는 같으므로(120000), 
+// 가로 반복(x)은 줄이고 세로 반복(y)은 유지합니다.
+// 예: 가로 1~2번, 세로 2000번
+roadTexture.repeat.set(1, 2000); 
+roadTexture.colorSpace = THREE.SRGBColorSpace;
 
-// // 랜덤 뽑기 함수
-// function getRandomMaterial() {
-//   let randomNum = Math.random() * totalWeight;
-//   for (let i = 0; i < loadedMaterials.length; i++) {
-//     randomNum -= loadedMaterials[i].weight;
-//     if (randomNum < 0) return loadedMaterials[i].material;
-//   }
-//   return loadedMaterials[0].material;
-// }
+const roadMat = new THREE.MeshStandardMaterial({
+  map: roadTexture,
+  roughness: 0.8,
+  metalness: 0.1 // 도로 느낌을 위해 약간 조절 가능
+});
 
-// // --- 3. 벽 생성 (조각 이어 붙이기) ---
-// const groundLength = 120000; // 전체 길이
-// const zCenter = 200;         // 지반의 중심 Z 위치
+// 3. 중앙 도로 Mesh 생성 (너비 15)
+const road = new THREE.Mesh(new THREE.PlaneGeometry(18, 120000, 1, 1), roadMat);
 
-// // [중요] 조각 하나의 길이 설정
-// // 기존에 120,000 길이에 6,000번 반복하셨죠? (120000 / 6000 = 20)
-// // 즉, 이미지 하나당 길이가 20이었습니다. 비율을 유지하기 위해 20으로 설정합니다.
-// const segmentLength = 20;    
+road.rotation.x = -Math.PI / 2;
 
-// const segmentCount = Math.ceil(groundLength / segmentLength); // 필요한 조각 개수 (약 6000개)
-// const wallGeometry = new THREE.PlaneGeometry(segmentLength, 5); // 가로 20, 세로 5 (사용자 설정 값)
+// ★ 핵심 포인트: Z-Fighting 방지
+// 배경이 -0.2이므로, 도로는 그보다 아주 살짝 위(-0.19)에 배치해야 
+// 이미지가 깨지지 않고 겹쳐 보입니다.
+road.position.y = -0.2; 
 
-// // 성능 최적화를 위해 그룹으로 묶음
-// const leftWallGroup = new THREE.Group();
-// const rightWallGroup = new THREE.Group();
+// 위치는 지반과 동일하게 잡습니다 (중앙 정렬)
+road.position.z = 200; 
+road.receiveShadow = true;
 
-// // 시작 Z 위치 계산 (중심에서 절반만큼 뒤로 이동)
-// const startZ = zCenter - (groundLength / 2);
+scene.add(road);
 
-// for (let i = 0; i < segmentCount; i++) {
-//   // 현재 조각의 Z 위치 계산
-//   // (i * 길이) + (길이의 절반/중심보정) + 시작점
-//   const zPos = startZ + (i * segmentLength) + (segmentLength / 2);
-
-//   // -- 왼쪽 벽 조각 --
-//   const leftMat = getRandomMaterial(); 
-//   const leftMesh = new THREE.Mesh(wallGeometry, leftMat);
-  
-//   leftMesh.rotation.y = Math.PI / 2; // 회전
-//   leftMesh.position.set(-5.5, 2.5, zPos); // 사용자 설정값: x=-7.5, y=2.5
-//   leftWallGroup.add(leftMesh);
-
-//   // -- 오른쪽 벽 조각 --
-//   const rightMat = getRandomMaterial(); 
-//   const rightMesh = new THREE.Mesh(wallGeometry, rightMat);
-  
-//   rightMesh.rotation.y = -Math.PI / 2; // 안쪽 보게 반대 회전
-//   rightMesh.position.set(7, 2.5, zPos); // 사용자 설정값: x=7.5, y=2.5
-//   rightWallGroup.add(rightMesh);
-// }
-
-// // 씬에 추가
-// scene.add(leftWallGroup);
-// scene.add(rightWallGroup);
   // Load rail texture instead of drawing track and rails
   const railTexture = textureLoader.load('/static/textures/rail.png');
   
@@ -3843,7 +3869,8 @@ const ambient = new THREE.AmbientLight(0xffffff, 0.05);
       // 헤드라이트 온
       headlight.intensity = 1000.0;
     } else {
-      scene.background = daySkyTex;
+      // scene.background는 스카이돔 때문에 비활성화
+      // scene.background = daySkyTex;
 
       dir.color.setHex(0xfff6e6);
       dir.intensity = 1.0;
@@ -3875,7 +3902,7 @@ scene.add(ambient);
 // // --- 주변 도시 건물 (도쿄역 주변) ---
 // (function addBuildings() {
 //   const buildingCount = 100; // 👈 20 → 10 으로 절반
-//   const texLoader = new THREE.TextureLoader();
+  // const texLoader = new THREE.TextureLoader();
 
 //   // 사용할 텍스처 (1~2개만)
 //   const facadeList = [
@@ -4096,11 +4123,11 @@ const y = (lowerName.includes('ktx') || lowerName.includes('999'))
 const z = 200 - rem;
 
 const angle = (lowerName.includes('ktx') || lowerName.includes('999'))
-  ? 0.5
+  ? 0.4
   : (lowerName.includes('n700s') || lowerName.includes('e26'))
-    ? 0.6
+    ? 0.5
     : lowerName.includes('e233') || lowerName.includes('e235') 
-    ? 0.4 : 0.8; //the rest, including n700s
+    ? 0.3 : 0.6; //the rest, including n700s
 
 
 // 카메라를 살짝 왼쪽으로 이동시키고, 살짝 아래쪽을 바라보게 설정
@@ -4117,7 +4144,7 @@ camera.lookAt(xOffset, yOffset, zOffset);
 }
 
 //  목표 FPS (원하면 24, 30, 45 등으로 바꿔도 됨)
-  const TARGET_FPS = 36; //dt 0.0025 + fps36 ->>opt val!!
+  const TARGET_FPS = 60; //dt 0.0025 + fps36 ->>opt val!!
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
   let lastRenderTime = 0;
 
@@ -4181,6 +4208,8 @@ camera.lookAt(xOffset, yOffset, zOffset);
     }
     // 사람 billboard 처리
 
+    // ===== 스카이돔은 카메라 자식이므로 자동으로 카메라를 따라감 =====
+    // (따로 업데이트할 필요 없음)
 
       renderer.render(scene, camera);
       // lightweight DPR autoscaler: periodically adjust renderer pixel ratio based on observed FPS

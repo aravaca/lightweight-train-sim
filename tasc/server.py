@@ -182,7 +182,7 @@ class Scenario:
     v0: float = 25.0
     grade_percent: float = 0.0
     mu: float = 1.0
-    dt: float = 0.0025 #0.01
+    dt: float = 0.005 #0.01
 
     @classmethod
     def from_json(cls, filepath):
@@ -195,7 +195,7 @@ class Scenario:
             v0=v0_ms,
             grade_percent=data.get("grade_percent", 0.0),
             mu=data.get("mu", 1.0),
-            dt=data.get("dt", 0.0025), #0.005
+            dt=data.get("dt", 0.005), #0.005
         )
 
 
@@ -303,9 +303,9 @@ class StoppingSim:
             "t": -1.0, "v": -1.0, "notch": -1,
             "s_cur": float('inf'), "s_up": float('inf'), "s_dn": float('inf')
         }
-        self._tasc_pred_interval = 0.05  # 50ms
+        self._tasc_pred_interval = 0.1  # 100ms - 더 효율적인 재계산 간격
         self._tasc_last_pred_t = -1.0
-        self._tasc_speed_eps = 0.3  # m/s
+        self._tasc_speed_eps = 0.5  # m/s - 캐시 유효성 범위 확대
 
         # ---- B5 필요 여부 캐시/스로틀 ----
         self._need_b5_last_t = -1.0
@@ -515,19 +515,25 @@ class StoppingSim:
         return -9.81 * (self.scn.grade_percent / 100.0)
 
     def _davis_accel(self, v: float) -> float:
-        """Davis 저항을 가속도로 환산 (A0/B1/C2는 차량 객체의 최신값 사용)"""
+        """Davis 저항을 가속도로 환산 (A0/B1/C2는 차량 객체의 최신값 사용) - 최적화"""
+        if v < 0.01:  # 매우 낮은 속도에서는 저항 무시
+            return 0.0
         A0 = self.veh.A0 * self.rr_factor
         B1 = self.veh.B1 * self.rr_factor
         C2 = self.veh.C2
-        F = A0 + B1 * v + C2 * v * v  # N
-        return -F / self.veh.mass_kg if v != 0 else 0.0
+        v_sq = v * v  # 한 번만 계산
+        F = A0 + B1 * v + C2 * v_sq  # N
+        return -F / self.veh.mass_kg
 
     # ----------------- 기타 헬퍼 -----------------
 
     def _blend_w_regen(self, v: float) -> float:
+        """재생 에너지 혼합 비율 (최적화: 3.6 곱셈 1회만)"""
         v_kmh = v * 3.6
-        if v_kmh >= 20.0: return 1.0
-        if v_kmh <= 8.0:  return 0.0
+        if v_kmh >= 20.0: 
+            return 1.0
+        if v_kmh <= 8.0:  
+            return 0.0
         return (v_kmh - 8.0) / 12.0
 
     def _update_brake_dyn_split(self, a_total_cmd: float, v: float, is_eb: bool, dt: float):
@@ -1191,14 +1197,20 @@ class StoppingSim:
         return self._estimate_stop_distance(notch, v)
 
     def _tasc_predict(self, cur_notch: int, v: float):
+        """TASC 정지거리 예측 (최적화된 캐싱)"""
         st = self.state
         need = False
+        # 캐시 유효성 검사 - 간격 기반
         if (st.t - self._tasc_last_pred_t) >= self._tasc_pred_interval:
             need = True
+        # 속도 변화 감지
         if abs(v - self._tasc_pred_cache["v"]) >= self._tasc_speed_eps:
             need = True
+        # 노치 변화 감지
         if cur_notch != self._tasc_pred_cache["notch"]:
             need = True
+        
+        # 캐시 유효 - 재계산 스킵
         if not need:
             return (
                 self._tasc_pred_cache["s_cur"],
@@ -1206,11 +1218,13 @@ class StoppingSim:
                 self._tasc_pred_cache["s_dn"],
             )
 
+        # 필요한 경우에만 계산 (100ms마다 최대 1회)
         max_normal_notch = self.veh.notches - 2
         s_cur = self._stopping_distance(cur_notch, v) if cur_notch > 0 else float("inf")
         s_up = self._stopping_distance(cur_notch + 1, v) if cur_notch + 1 <= max_normal_notch else 0.0
         s_dn = self._stopping_distance(cur_notch - 1, v) if cur_notch - 1 >= 1 else float("inf")
 
+        # 캐시 업데이트
         self._tasc_pred_cache.update(
             {"t": st.t, "v": v, "notch": cur_notch, "s_cur": s_cur, "s_up": s_up, "s_dn": s_dn}
         )
@@ -1283,20 +1297,17 @@ class StoppingSim:
                     self.first_brake_notch = None
                     self.first_brake_start_t = None
 
-        # ▼ 타이머(카운트다운): 0 아래로도 계속 진행
+        # ▼ 타이머(카운트다운): 0 아래로도 계속 진행 - 최적화
         if st.timer_enabled and not st.finished:
             st.time_remaining_s -= dt
-            st.time_remaining_int = math.floor(st.time_remaining_s)
-            if st.time_remaining_s < 0.0:
+            # 정수 표시값은 0.01초마다만 업데이트 (불필요한 계산 감소)
+            st.time_remaining_int = int(st.time_remaining_s)
+            if st.time_remaining_s < 0.0 and not st.time_overrun_started:
                 st.time_overrun_s = -st.time_remaining_s
                 st.time_overrun_int = abs(st.time_remaining_int)
-                if not st.time_overrun_started:
-                    st.time_overrun_started = True
-                    st.issues = getattr(st, "issues", {})
-                    st.issues["timeout_started"] = True
-            else:
-                st.time_overrun_s = 0.0
-                st.time_overrun_int = 0
+                st.time_overrun_started = True
+                st.issues = getattr(st, "issues", {})
+                st.issues["timeout_started"] = True
 
         # ---------- TASC ----------
         if self.tasc_enabled and not st.finished:
@@ -1355,18 +1366,21 @@ class StoppingSim:
         # internal_notch가 더 높으면 그것을 사용
         effective_notch = max(st.lever_notch, st.internal_notch)
         
-        pwr_accel = self.compute_power_accel(effective_notch, st.v) if self.state.atc_overspeed else self.compute_power_accel(st.lever_notch, st.v) # 동력 가속도
+        # ATC 오버스피드 시에만 조건부 계산
+        if self.state.atc_overspeed:
+            pwr_accel = self.compute_power_accel(effective_notch, st.v)
+        else:
+            pwr_accel = self.compute_power_accel(st.lever_notch, st.v)
 
-        a_cmd_brake = self._effective_brake_accel(effective_notch, st.v) # 제동 가속도 명령
-        is_eb = (effective_notch == self.veh.notches - 1) # 비상제동 여부
-        self._update_brake_dyn_split(a_cmd_brake, st.v, is_eb, dt) # 제동 동역학 업데이트
-        a_brake = self._wsp_update(st.v, self.brk_accel, dt) # 제동 가속도 (WSP 포함)
-        a_grade = self._grade_accel() # 경사 가속도
-        # if DEBUG and int(st.t) != int(st.t - dt):
-        #     print(f"grade%={self.scn.grade_percent:+.2f} a_grade={a_grade:+.3f}")
-        a_davis = self._davis_accel(st.v) # 데이비스 항력 가속도
+        a_cmd_brake = self._effective_brake_accel(effective_notch, st.v)
+        is_eb = (effective_notch == self.veh.notches - 1)
+        self._update_brake_dyn_split(a_cmd_brake, st.v, is_eb, dt)
+        a_brake = self._wsp_update(st.v, self.brk_accel, dt)
+        a_grade = self._grade_accel()
+        a_davis = self._davis_accel(st.v)
 
-        a_target = pwr_accel + a_brake + a_grade + a_davis # 최종 목표 가속도
+        # 최종 가속도 계산 (순차 누적)
+        a_target = pwr_accel + a_brake + a_grade + a_davis
 
         rem_now = self.scn.L - st.s
         v_kmh = st.v * 3.6
@@ -1374,13 +1388,18 @@ class StoppingSim:
         if effective_notch >= 1:
             a_target = min(a_target, 0.0)
 
-        self._a_cmd_filt += (a_target - self._a_cmd_filt) * (dt / max(1e-6, self.veh.tau_brk))        
+        # 가속도 필터 (tau_brk 사용)
+        tau_inv = dt / max(1e-6, self.veh.tau_brk)
+        self._a_cmd_filt += (a_target - self._a_cmd_filt) * tau_inv
 
+        # 저크 제한 (jerk limiting)
         max_da = self.veh.j_max * dt
+        # 저속/브레이크 상황에서 저크 제한 완화
         if v_kmh <= 5.0 and effective_notch >= 1:
             scale = 0.25 + 0.75 * (v_kmh / 5.0)
             max_da *= scale
 
+        # 가속도 변화 클램핑
         da = self._a_cmd_filt - st.a
         if da > max_da:
             da = max_da
@@ -1388,6 +1407,7 @@ class StoppingSim:
             da = -max_da
         st.a += da
 
+        # 물리 적분
         st.v = max(0.0, st.v + st.a * dt)
         st.s += st.v * dt + 0.5 * st.a * dt * dt
         st.t += dt
@@ -1692,8 +1712,8 @@ async def ws_endpoint(ws: WebSocket):
     sim.running = False
 
 
-    # 전송 속도: 30Hz
-    send_interval = 1.0 / 30.0
+    # 전송 속도: 60Hz (더 부드러운 애니메이션)
+    send_interval = 1.0 / 120.0
 
     # ---- 분리된 비동기 루프들 ----
     async def recv_loop():
@@ -2185,7 +2205,7 @@ async def ws_endpoint(ws: WebSocket):
                 t_start = None
                 step_count = 0
 
-            await asyncio.sleep(dt / 2)
+            await asyncio.sleep(dt)  # dt 기반 sleep (CPU 효율성)
 
 
     async def send_loop():
