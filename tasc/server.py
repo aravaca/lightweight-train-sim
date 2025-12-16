@@ -1611,6 +1611,7 @@ class StoppingSim:
         st = self.state
         return {
             "t": round(st.t, 3),
+            "server_ts": time.time(),  # 보간용 서버 타임스탬프
             "s": st.s,
             "v": st.v,
             "a": st.a,
@@ -1713,7 +1714,7 @@ async def ws_endpoint(ws: WebSocket):
 
 
     # 전송 속도: 60Hz (더 부드러운 애니메이션)
-    send_interval = 1.0 / 30.0
+    send_interval = 1.0 / 20.0
 
     # ---- 분리된 비동기 루프들 ----
     async def recv_loop():

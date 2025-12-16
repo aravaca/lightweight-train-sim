@@ -2609,6 +2609,99 @@ window.updateInstrumentHUD = updateInstrumentHUD;
 
 const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
 
+// =========================================================================
+// 🚀 클라이언트 보간 시스템 (서버 20Hz → 클라이언트 60fps 부드러운 렌더링)
+// =========================================================================
+const interpState = {
+  // 마지막 서버 상태 (보간 시작점)
+  prev: null,
+  // 최신 서버 상태 (보간 목표)
+  curr: null,
+  // 서버 상태 수신 타임스탬프 (클라이언트 시간)
+  prevRecvTime: 0,
+  currRecvTime: 0,
+  // 서버 전송 간격 추정 (ms)
+  estimatedInterval: 50, // 20Hz 기본값 = 50ms
+  // 보간된 남은거리 (렌더링에 사용)
+  interpolatedRemaining: 0,
+  // 보간된 속도
+  interpolatedSpeed: 0,
+};
+
+/**
+ * 서버에서 새 상태를 받았을 때 호출
+ * @param {Object} newState - 서버에서 받은 상태
+ */
+function updateInterpState(newState) {
+  const now = performance.now();
+  
+  // 이전 상태 이동
+  interpState.prev = interpState.curr;
+  interpState.prevRecvTime = interpState.currRecvTime;
+  
+  // 새 상태 저장
+  interpState.curr = newState;
+  interpState.currRecvTime = now;
+  
+  // 서버 전송 간격 추정 (이동 평균)
+  if (interpState.prev && interpState.prevRecvTime > 0) {
+    const dt = now - interpState.prevRecvTime;
+    if (dt > 10 && dt < 500) { // 유효 범위 내에서만
+      interpState.estimatedInterval = interpState.estimatedInterval * 0.7 + dt * 0.3;
+    }
+  }
+}
+
+/**
+ * 현재 시간에 맞게 보간된 상태를 반환
+ * @returns {Object} 보간된 상태 (remaining_m, v 등)
+ */
+function getInterpolatedState() {
+  const now = performance.now();
+  
+  if (!interpState.curr) {
+    return { remaining_m: 0, v: 0, a: 0 };
+  }
+  
+  // prev가 없으면 curr 그대로 반환
+  if (!interpState.prev) {
+    return {
+      remaining_m: interpState.curr.remaining_m ?? 0,
+      v: interpState.curr.v ?? 0,
+      a: interpState.curr.a ?? 0,
+    };
+  }
+  
+  // 보간 비율 계산 (0~1, 1 이상은 외삽)
+  const elapsed = now - interpState.currRecvTime;
+  const interval = interpState.estimatedInterval;
+  
+  // 물리 기반 보간: 현재 속도와 가속도를 사용해 예측
+  const v_curr = interpState.curr.v ?? 0;
+  const a_curr = interpState.curr.a ?? 0;
+  const rem_curr = interpState.curr.remaining_m ?? 0;
+  
+  // 외삽 시간 (초 단위)
+  const dt = elapsed / 1000;
+  
+  // 간단한 물리 예측: s = s0 + v*t + 0.5*a*t^2
+  // remaining_m은 감소하므로 부호 주의
+  const predictedRemaining = rem_curr - (v_curr * dt + 0.5 * a_curr * dt * dt);
+  
+  // 속도도 예측
+  const predictedSpeed = Math.max(0, v_curr + a_curr * dt);
+  
+  // 결과 저장 (디버그/모니터링용)
+  interpState.interpolatedRemaining = Math.max(0, predictedRemaining);
+  interpState.interpolatedSpeed = predictedSpeed;
+  
+  return {
+    remaining_m: interpState.interpolatedRemaining,
+    v: interpState.interpolatedSpeed,
+    a: a_curr,
+  };
+}
+
 // --- Low-speed noise: Web Audio 기반 부드러운 루프 + 페이드 ---
 // 목표: 속도 <= 10 km/h 일 때 루프 재생, 10 km/h 부근에서 부드럽게 페이드아웃
 const NOISE_PATH = '/static/E233/OriginalData/Sound/Noise.wav';
@@ -2703,20 +2796,12 @@ function _updateNoiseForSpeed(v_ms) {
 }
 
 // 메시지 수신에서 상태를 보고 속도(v)가 임계치 이하이면 재생, 아니면 페이드아웃
-// ===== 클라이언트 측 상태 보간 (60Hz 렌더링용) =====
-let lastState = null;
-let lastStateTime = 0;
+// (보간 시스템은 위에서 이미 정의됨 - interpState 사용)
 
 ws.addEventListener('message', (ev) => {
   try {
     const msg = JSON.parse(ev.data);
     if (msg && msg.type === 'state' && msg.payload) {
-      const currentTime = performance.now();
-      
-      // 새 상태 저장 (보간 기준)
-      lastState = msg.payload;
-      lastStateTime = currentTime;
-      
       const v = Number(msg.payload.v) || 0; // m/s
       _updateNoiseForSpeed(v);
     }
@@ -2724,30 +2809,6 @@ ws.addEventListener('message', (ev) => {
     // ignore invalid JSON or other parsing errors
   }
 });
-
-// 보간된 상태 반환 (60Hz 렌더링에서 사용)
-function getInterpolatedState() {
-  if (!lastState) return null;
-  
-  const currentTime = performance.now();
-  const dt = (currentTime - lastStateTime) / 1000; // 초 단위
-  
-  // 최대 100ms까지만 보간 (그 이상은 상태가 오래됨)
-  if (dt > 0.1) {
-    return lastState;
-  }
-  
-  // 선형 보간: 위치, 속도는 가속도 기반으로 추정
-  const interp = JSON.parse(JSON.stringify(lastState));
-  const a = lastState.a || 0;
-  
-  // s = s0 + v*dt + 0.5*a*dt^2
-  interp.s = (lastState.s || 0) + (lastState.v || 0) * dt + 0.5 * a * dt * dt;
-  // v = v0 + a*dt
-  interp.v = Math.max(0, (lastState.v || 0) + a * dt);
-  
-  return interp;
-}
 
 const icons = [
   "/static/logos/e233_logo.png",
@@ -4108,7 +4169,9 @@ signDistances.forEach(d => {
   // 디자인: 카메라 z_world = 200 - remaining_m
   // 플랫폼/레일/자갈은 세계 고정. 카메라만 이동 -> 1인칭 주행.
 function syncCameraFromState() {
-  const rem = Number(window.st?.remaining_m ?? 0);
+  // 🚀 보간된 상태 사용 (60fps 부드러운 렌더링)
+  const interp = getInterpolatedState();
+  const rem = interp.remaining_m;
   
 const trainName = window.st?.train_name ?? '';
 const lowerName = trainName.toLowerCase();
@@ -4144,7 +4207,7 @@ camera.lookAt(xOffset, yOffset, zOffset);
 }
 
 //  목표 FPS (원하면 24, 30, 45 등으로 바꿔도 됨)
-  const TARGET_FPS = 36; //dt 0.0025 + fps36 ->>opt val!!
+  const TARGET_FPS = 60; //dt 0.0025 + fps36 ->>opt val!!
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
   let lastRenderTime = 0;
 
@@ -4157,8 +4220,9 @@ camera.lookAt(xOffset, yOffset, zOffset);
     lastRenderTime = t;
     if (st) drawHUD(st);
     if (modeSel?.value === 'on'){
-  // 진행감: 자갈/트랙 텍스처 스크롤(매 프레임 반복수 변경)
-  const rem = Number(window.st?.remaining_m ?? 0);
+  // 🚀 보간된 상태로 텍스처 스크롤 (60fps 부드러운 렌더링)
+  const interp = getInterpolatedState();
+  const rem = interp.remaining_m;
   // only update texture offsets if the textures exist (avoid per-frame exceptions)
   if (typeof ballastDiff !== 'undefined' && ballastDiff && ballastDiff.offset) {
     ballastDiff.offset.y = (rem * 100) % 1;
@@ -6504,6 +6568,9 @@ ws.onmessage = (ev) => {
   // 상태 저장
   st = msg.payload;
   window.st = st;
+  
+  // 🚀 보간 시스템 업데이트 (서버 상태 수신 시)
+  updateInterpState(st);
 
   // (clock should run continuously) — do not stop the mini HUD clock when run finishes
 
