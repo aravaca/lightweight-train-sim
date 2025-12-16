@@ -509,6 +509,14 @@ class StoppingSim:
         if a_eff <= a_cap + 1e-6:
             scale = 0.90 if v > 8.0 else 0.85
             a_eff = a_cap * scale
+        
+        # 🚃 Low-speed brake fade: linearly reduce from 100% at 5 km/h to 10% at 0 km/h
+        v_kmh = v * 3.6
+        if v_kmh < 5.0:
+            # Linear interpolation: 10% at 0 km/h, 100% at 5 km/h
+            low_speed_factor = 0.3 + 0.7 * (v_kmh / 5.0)
+            a_eff *= low_speed_factor
+        
         return a_eff
 
     def _grade_accel(self) -> float:
