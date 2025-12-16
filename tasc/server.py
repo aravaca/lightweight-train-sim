@@ -1714,7 +1714,7 @@ async def ws_endpoint(ws: WebSocket):
 
 
     # 전송 속도: 60Hz (더 부드러운 애니메이션)
-    send_interval = 1.0 / 20.0
+    send_interval = 1.0 / 60.0
 
     # ---- 분리된 비동기 루프들 ----
     async def recv_loop():
