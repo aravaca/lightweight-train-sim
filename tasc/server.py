@@ -320,6 +320,13 @@ class StoppingSim:
         # -------------------- 동력/응답/상태 --------------------
         self.pwr_accel = 0.0   # 동력 가속도 (forward_notch_accels 반영)
         
+        # 기동 지연 상태 (정지 상태에서 가속 시 1.5초 지연)
+        self.pwr_startup_delay = 1.5  # 기동 지연 시간 (초)
+        self.pwr_startup_timer = 0.0  # 현재 지연 타이머
+        self.pwr_startup_active = False  # 기동 지연 중인지
+        self.pwr_rampup_time = 2.0  # 람프업 시간 (초) - 부드러운 가속
+        self.pwr_rampup_progress = 0.0  # 람프업 진행도 (0~1)
+        
         # -------------------- 제동/응답/상태 --------------------
         self.brk_accel = 0.0
         self.brk_elec = 0.0
@@ -687,22 +694,9 @@ class StoppingSim:
         elif name == "setInternalNotch":
             st.internal_notch = self._clamp_notch(val)
 
-        # When a forward notch is applied while stopped, compute and apply the proper
-        # acceleration immediately so the filter is initialized correctly for smooth
-        # acceleration from rest.
-        try:
-            if st.lever_notch < 0 and st.v == 0.0:
-                # Compute what the power accel should be at v=0
-                pwr = self.compute_power_accel(st.lever_notch, 0.0)
-                # Initialize the filter to this value so acceleration starts smoothly
-                if pwr > 0:
-                    self._a_cmd_filt = pwr
-                    if DEBUG:
-                        print(f"[APPLY_CMD] Forward notch at v=0: initialized _a_cmd_filt={self._a_cmd_filt:.3f} m/s² (notch={st.lever_notch})")
-        except Exception as e:
-            if DEBUG:
-                print(f"[APPLY_CMD] Error initializing accel filter: {e}")
-            pass
+        # 기동 지연 시스템이 있으므로 즉시 가속 초기화 제거
+        # (이전에는 정지 상태에서 가속 노치 시 _a_cmd_filt를 즉시 초기화했지만,
+        #  이제 기동 지연 + 램프업 시스템이 부드러운 출발을 담당)
 
 
     # ----------------- Lifecycle -----------------
@@ -784,6 +778,11 @@ class StoppingSim:
         self.wsp_timer = 0.0
 
         self._a_cmd_filt = 0.0
+
+        # 기동 지연 상태 리셋
+        self.pwr_startup_timer = 0.0
+        self.pwr_startup_active = False
+        self.pwr_rampup_progress = 0.0
 
         self.rr_factor = 1.0
 
@@ -1380,13 +1379,52 @@ class StoppingSim:
         
         # ATC 오버스피드 시에만 조건부 계산
         if self.state.atc_overspeed:
-            pwr_accel = self.compute_power_accel(effective_notch, st.v)
+            pwr_accel_raw = self.compute_power_accel(effective_notch, st.v)
         else:
-            pwr_accel = self.compute_power_accel(st.lever_notch, st.v)
+            pwr_accel_raw = self.compute_power_accel(st.lever_notch, st.v)
 
         # N(중립) 기어일 때 가속(역행) 무효 - 브레이크만 작동
-        if st.gear == "N" and pwr_accel > 0:
-            pwr_accel = 0.0
+        if st.gear == "N" and pwr_accel_raw > 0:
+            pwr_accel_raw = 0.0
+
+        # ========== 기동 지연 및 람프업 시스템 (EMU 실제 동작) ==========
+        is_power_requested = (st.lever_notch < 0 and pwr_accel_raw > 0)
+        
+        if is_power_requested:
+            if st.v < 0.1:  # 정지 상태에서 가속 시작
+                if not self.pwr_startup_active:
+                    # 기동 지연 시작
+                    self.pwr_startup_active = True
+                    self.pwr_startup_timer = 0.0
+                    self.pwr_rampup_progress = 0.0
+                
+                if self.pwr_startup_timer < self.pwr_startup_delay:
+                    # 아직 지연 중 - 동력 0
+                    self.pwr_startup_timer += dt
+                    pwr_accel = 0.0
+                else:
+                    # 지연 후 람프업 (0에서 서서히 증가)
+                    self.pwr_rampup_progress = min(1.0, self.pwr_rampup_progress + dt / self.pwr_rampup_time)
+                    # smooth ease-in curve: t^2 for gradual start
+                    ramp_factor = self.pwr_rampup_progress * self.pwr_rampup_progress
+                    pwr_accel = pwr_accel_raw * ramp_factor
+            else:
+                # 이미 움직이고 있으면 람프업 계속 (1까지)
+                if self.pwr_rampup_progress < 1.0:
+                    self.pwr_rampup_progress = min(1.0, self.pwr_rampup_progress + dt / self.pwr_rampup_time)
+                    ramp_factor = self.pwr_rampup_progress * self.pwr_rampup_progress
+                    pwr_accel = pwr_accel_raw * ramp_factor
+                else:
+                    pwr_accel = pwr_accel_raw
+                # 움직이기 시작하면 startup 상태 해제
+                self.pwr_startup_active = False
+                self.pwr_startup_timer = 0.0
+        else:
+            # 동력 요청 없으면 상태 리셋
+            self.pwr_startup_active = False
+            self.pwr_startup_timer = 0.0
+            self.pwr_rampup_progress = 0.0
+            pwr_accel = pwr_accel_raw
 
         a_cmd_brake = self._effective_brake_accel(effective_notch, st.v)
         is_eb = (effective_notch == self.veh.notches - 1)

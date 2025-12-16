@@ -1,5 +1,5 @@
 git add .
-git commit -m "add stop accuracy param and logic"
+git commit -m "add acceleration smoothing for power-on sequence"
 git push origin main
 
 pip install fastapi uvicorn[standard]
