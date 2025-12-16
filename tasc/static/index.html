@@ -2945,7 +2945,7 @@ const scene = new THREE.Scene();
   
   // 먼저 기본 배경을 위한 구를 만들되, 텍스처는 로드 후에 적용
   // 더 높은 세그먼트로 UV가 제대로 매핑되도록
-  const skydomeGeometry = new THREE.SphereGeometry(5000, 128, 128);
+  const skydomeGeometry = new THREE.SphereGeometry(5000, 24, 24);
   const skydomeBaseMaterial = new THREE.MeshBasicMaterial({
     color: 0x87CEEB,  // 하늘색
     side: THREE.BackSide,
@@ -4326,8 +4326,13 @@ class BveSoundEngine {
     if (trainType && (trainType.toLowerCase().includes('ktx') || trainType.toLowerCase().includes('n700'))) {
       masterVolume = 0.3; // bullet trains get lower volume
     }
+    this.baseMasterVolume = masterVolume; // 기본 마스터 볼륨 저장
     this.master.gain.value = masterVolume;
     this.master.connect(ctx.destination);
+    
+    // N 노치 볼륨 감쇠용
+    this.targetMasterVolume = masterVolume;
+    this.neutralFadeTime = 2; // N 노치 전환 시 페이드 시간 (초)
 
     // CSV tables: { speed -> { wavName -> value } }
     this.powerVolTable = {};
@@ -4919,6 +4924,24 @@ class BveSoundEngine {
 
     // Clean up old ghost sources
     this.cleanupGhostSources();
+    
+    // 🔊 N 노치 (neutral)일 때 마스터 볼륨 80% 감소
+    const isNeutral = (powerNotch === 0 && brakeNotch === 0 && !isEB);
+    const newTargetVol = isNeutral 
+      ? this.baseMasterVolume * 0.3  // 80% 감소 = 20% 볼륨
+      : this.baseMasterVolume;       // 원래 볼륨
+    
+    if (this.targetMasterVolume !== newTargetVol) {
+      this.targetMasterVolume = newTargetVol;
+      const now = this.ctx.currentTime;
+      try {
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setValueAtTime(this.master.gain.value, now);
+        this.master.gain.linearRampToValueAtTime(newTargetVol, now + this.neutralFadeTime);
+      } catch (e) {
+        this.master.gain.value = newTargetVol;
+      }
+    }
 
     // Skip update if speed is too low
     if (currentSpeed < 0.5) {
