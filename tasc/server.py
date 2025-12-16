@@ -42,6 +42,7 @@ class Vehicle:
     maxSpeed_kmh: float = 140.0
     forward_notches: int = 5
     forward_notch_accels: list = None  # [-1.5, -1.1] 등
+    stop_accuracy_m: float = 1.0 #default 1.0m
 
 
     # --- 새로 추가 ---
@@ -144,6 +145,7 @@ class Vehicle:
                 [-1.5, -1.10, -0.95, -0.80, -0.65, -0.50, -0.35, -0.20, 0.0],
             ),
             maxSpeed_kmh=data.get("maxSpeed_kmh", 140.0),
+            stop_accuracy_m=data.get("stop_accuracy_m", 1.0),
             forward_notches=data.get("forward_notches", 5),
             forward_notch_accels=data.get("forward_notch_accels", [ 0.250, 0.287, 0.378, 0.515, 0.694 ]),
             tau_cmd=data.get("tau_cmd_ms", 150) / 1000.0,
@@ -1441,8 +1443,8 @@ class StoppingSim:
 
         # ---------- Finish ----------
         rem = self.scn.L - st.s
-        # 종료 조건: -100m 넘어가면 강제종료 OR (오차 1m 이내 && 속도 0)
-        if not st.finished and (rem <= -100.0 or (abs(rem) <= 1.0 and st.v <= 0.01)):
+        # 종료 조건: -100m 넘어가면 강제종료 OR (오차 +-Nm 이내 && 속도 0)
+        if not st.finished and (rem <= -100.0 or (abs(rem) <= self.veh.stop_accuracy_m and st.v <= 0.01)):
             st.finished = True
             st.stop_error_m = self.scn.L - st.s
             st.residual_speed_kmh = st.v * 3.6

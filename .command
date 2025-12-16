@@ -1,5 +1,5 @@
 git add .
-git commit -m "update platform graphics"
+git commit -m "add stop accuracy param and logic"
 git push origin main
 
 pip install fastapi uvicorn[standard]
