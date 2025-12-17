@@ -4161,6 +4161,343 @@ window.__updateFencePositions = function(newLen) {
 
 console.log('[Platform] ✓ 플랫폼 양끝에 펜스 2개 배치 완료');
 
+// ===== 🚃 AI Train System (반대편 선로) =====
+const aiTrainSystem = (() => {
+  const AI_TRACK_X = 4.0;    // 반대편 선로 x 위치
+  const CAR_LENGTH = 20.0;   // 차량 1량 길이 (20,000mm = 20m)
+  const CAR_WIDTH = 2.95;    // 차량 폭 (2,950mm = 2.95m)
+  const CAR_HEIGHT = 3.64;   // 차량 전체 높이 (3,640mm = 3.64m)
+  const BOGIE_HEIGHT = 0.88; // 대차 높이 (880mm = 0.88m)
+  const FACE_HEIGHT = 2.76;  // 전두부 높이 (2,760mm = 2.76m)
+  const BODY_HEIGHT = FACE_HEIGHT;  // 차체 높이 = face 높이
+  const TRAIN_Y = 0.15;      // 레일 위 약간 띄움
+  
+  // E233만 사용 (1000번대, 3000번대)
+  // 텍스처 정리:
+  // - face1: 앞면 (전두부), face2: 뒷면 (후두부)
+  // - Aw/Bw: 측면, DT71: 대차
+  // - E233s: 범퍼, vvvf: VVVF 장치, roof/AU75_1: 천장
+  const trainTypes = [
+    { 
+      folder: 'E233', 
+      sideA: 'E233-1000Aw.png', 
+      sideB: 'E233-1000Bw.png',
+      face: 'E233-1000face1.png', 
+      back: 'E233-1000face2.png',
+      bumper: 'E233s.png',
+      bogie: 'DT71.png',
+      vvvf: 'vvvf.png',
+      roof: 'roof.png',
+      cars: [10, 11, 15] 
+    },
+    { 
+      folder: 'E233', 
+      sideA: 'E233-3000Aw.png', 
+      sideB: 'E233-3000Bw.png',
+      face: 'E233-3000face1.png', 
+      back: 'E233-3000face2.png',
+      bumper: 'E233s.png',
+      bogie: 'DT71.png',
+      vvvf: 'vvvf.png',
+      roof: 'roof.png',
+      cars: [10, 15] 
+    },
+  ];
+  
+  let aiTrains = [];  // 현재 활성화된 AI 열차들
+  const textureCache = {};  // 텍스처 캐시
+  
+  // 텍스처 로드 (캐시 사용)
+  function loadTexture(path) {
+    if (textureCache[path]) return textureCache[path];
+    const tex = textureLoader.load(path, t => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.generateMipmaps = true;
+      t.minFilter = THREE.LinearMipmapLinearFilter;
+    });
+    textureCache[path] = tex;
+    return tex;
+  }
+  
+  // 단일 차량 생성
+  function createCar(trainType, isHead, isTail) {
+    const group = new THREE.Group();
+    const basePath = '/static/textures/Trainobj/' + trainType.folder + '/';
+    
+    // 측면 텍스처 (Aw = A측, Bw = B측)
+    const sideATex = loadTexture(basePath + trainType.sideA);
+    const sideBTex = loadTexture(basePath + trainType.sideB);
+    const sideAMat = new THREE.MeshBasicMaterial({ map: sideATex, side: THREE.FrontSide });
+    const sideBMat = new THREE.MeshBasicMaterial({ map: sideBTex, side: THREE.FrontSide });
+    
+    // 지붕 텍스처
+    const roofTex = loadTexture(basePath + trainType.roof);
+    const roofMat = new THREE.MeshBasicMaterial({ map: roofTex, side: THREE.FrontSide });
+    
+    // 바닥 (어두운 색)
+    const bottomMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+    
+    // 전면/후면 텍스처
+    let faceMat, backMat;
+    if (isHead) {
+      const faceTex = loadTexture(basePath + trainType.face);
+      faceMat = new THREE.MeshBasicMaterial({ map: faceTex, side: THREE.FrontSide });
+    } else {
+      faceMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+    }
+    if (isTail) {
+      const backTex = loadTexture(basePath + trainType.back);
+      backMat = new THREE.MeshBasicMaterial({ map: backTex, side: THREE.FrontSide });
+    } else {
+      backMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+    }
+    
+    // 차체 박스 (face 높이 = 2.76m) - 둥글게 보이도록 약간 bevel 효과
+    const bodyGeo = new THREE.BoxGeometry(CAR_WIDTH, BODY_HEIGHT, CAR_LENGTH, 1, 1, 1);
+    const bodyMaterials = [
+      sideAMat,  // +X (오른쪽 = A측)
+      sideBMat,  // -X (왼쪽 = B측)
+      roofMat,   // +Y (지붕)
+      bottomMat, // -Y (바닥)
+      faceMat,   // +Z (전면)
+      backMat    // -Z (후면)
+    ];
+    
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMaterials);
+    bodyMesh.position.y = BOGIE_HEIGHT + BODY_HEIGHT / 2;  // 대차 위에 차체 배치
+    bodyMesh.castShadow = false;
+    bodyMesh.receiveShadow = false;
+    group.add(bodyMesh);
+    
+    // 대차 (DT71 텍스처) - 입체적 BoxGeometry, 측면에만 텍스처
+    const bogieTex = loadTexture(basePath + trainType.bogie);
+    const bogieSideMat = new THREE.MeshBasicMaterial({ map: bogieTex, side: THREE.FrontSide, transparent: true });
+    const bogieDarkMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+    
+    // 대차 크기: 폭 1.2m, 높이 0.88m, 길이 3.0m
+    const BOGIE_WIDTH = 1.2;
+    const BOGIE_LENGTH = 3.0;
+    const BOGIE_INSET = 0.9415;  // 안쪽으로 941.5mm 들어감
+    const bogieGeo = new THREE.BoxGeometry(BOGIE_WIDTH, BOGIE_HEIGHT, BOGIE_LENGTH);
+    
+    // 재질 배열: 측면(+X, -X)만 텍스처, 나머지는 어두운 색
+    const bogieMaterials = [
+      bogieSideMat,  // +X (바깥쪽)
+      bogieSideMat,  // -X (바깥쪽)
+      bogieDarkMat,  // +Y (위)
+      bogieDarkMat,  // -Y (아래)
+      bogieDarkMat,  // +Z (앞)
+      bogieDarkMat   // -Z (뒤)
+    ];
+    
+    // 대차1 오른쪽 (차체 중심에서 오른쪽으로, 안쪽으로 들어감)
+    const bogie1R = new THREE.Mesh(bogieGeo, bogieMaterials);
+    bogie1R.position.set(CAR_WIDTH/2 - BOGIE_INSET, BOGIE_HEIGHT/2, CAR_LENGTH * 0.32);
+    group.add(bogie1R);
+    
+    // 대차1 왼쪽
+    const bogie1L = new THREE.Mesh(bogieGeo, bogieMaterials);
+    bogie1L.position.set(-CAR_WIDTH/2 + BOGIE_INSET, BOGIE_HEIGHT/2, CAR_LENGTH * 0.32);
+    group.add(bogie1L);
+    
+    // 대차2 오른쪽
+    const bogie2R = new THREE.Mesh(bogieGeo, bogieMaterials);
+    bogie2R.position.set(CAR_WIDTH/2 - BOGIE_INSET, BOGIE_HEIGHT/2, -CAR_LENGTH * 0.32);
+    group.add(bogie2R);
+    
+    // 대차2 왼쪽
+    const bogie2L = new THREE.Mesh(bogieGeo, bogieMaterials);
+    bogie2L.position.set(-CAR_WIDTH/2 + BOGIE_INSET, BOGIE_HEIGHT/2, -CAR_LENGTH * 0.32);
+    group.add(bogie2L);
+    
+    // VVVF 장치 (대차 사이, 차체 양 옆면에 붙어서 길게) - 입체적
+    const vvvfTex = loadTexture(basePath + trainType.vvvf);
+    const vvvfSideMat = new THREE.MeshBasicMaterial({ map: vvvfTex, side: THREE.DoubleSide });
+    const vvvfDarkMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+    
+    // VVVF 크기: bogie 사이를 꽉 채우도록
+    const VVVF_THICKNESS = 0.3;  // 두께
+    const VVVF_HEIGHT = 0.5;     // 높이
+    // 대차1(z=6.4)과 대차2(z=-6.4) 사이, 대차 길이 3.0m 고려
+    const bogie1Z = CAR_LENGTH * 0.32;  // 6.4
+    const bogie2Z = -CAR_LENGTH * 0.32; // -6.4
+    const BOGIE_LEN = 3.0;
+    const VVVF_LENGTH = (bogie1Z - BOGIE_LEN/2) - (bogie2Z + BOGIE_LEN/2);  // 대차 사이 거리
+    
+    const vvvfGeo = new THREE.BoxGeometry(VVVF_THICKNESS, VVVF_HEIGHT, VVVF_LENGTH);
+    
+    // 재질 배열
+    const vvvfMaterials = [
+      vvvfSideMat,  // +X (바깥쪽)
+      vvvfDarkMat,  // -X (안쪽)
+      vvvfDarkMat,  // +Y (위)
+      vvvfSideMat,  // -Y (아래)
+      vvvfSideMat,  // +Z (앞)
+      vvvfSideMat   // -Z (뒤)
+    ];
+    
+    // 오른쪽 VVVF (차체 오른쪽 옆면에 붙음, bogie처럼 안쪽으로)
+    const vvvfR = new THREE.Mesh(vvvfGeo, vvvfMaterials);
+    vvvfR.position.set(CAR_WIDTH/2 - BOGIE_INSET + 0.4, BOGIE_HEIGHT/2, 0);
+    group.add(vvvfR);
+    
+    // 왼쪽 VVVF용 재질 (바깥쪽이 -X)
+    const vvvfMaterialsL = [
+      vvvfDarkMat,  // +X (안쪽)
+      vvvfSideMat,  // -X (바깥쪽)
+      vvvfDarkMat,  // +Y (위)
+      vvvfSideMat,  // -Y (아래)
+      vvvfSideMat,  // +Z (앞)
+      vvvfSideMat   // -Z (뒤)
+    ];
+    
+    // 왼쪽 VVVF (차체 왼쪽 옆면에 붙음, bogie처럼 안쪽으로)
+    const vvvfL = new THREE.Mesh(vvvfGeo, vvvfMaterialsL);
+    vvvfL.position.set(-CAR_WIDTH/2 + BOGIE_INSET - 0.4 , BOGIE_HEIGHT/2, 0);
+    group.add(vvvfL);
+    
+    // 범퍼 (선두차/후미차 전면 아래) - 땅에 거의 닿을락 말락
+    if (isHead || isTail) {
+      const bumperTex = loadTexture(basePath + trainType.bumper);
+      const bumperMat = new THREE.MeshBasicMaterial({ map: bumperTex, side: THREE.DoubleSide, transparent: true });
+      const bumperGeo = new THREE.PlaneGeometry(CAR_WIDTH, BOGIE_HEIGHT);
+      
+      if (isHead) {
+        const bumperFront = new THREE.Mesh(bumperGeo, bumperMat);
+        bumperFront.position.set(0, BOGIE_HEIGHT / 2, CAR_LENGTH/2 + 0.02);
+        group.add(bumperFront);
+      }
+      if (isTail) {
+        const bumperBack = new THREE.Mesh(bumperGeo, bumperMat);
+        bumperBack.position.set(0, BOGIE_HEIGHT / 2, -CAR_LENGTH/2 - 0.02);
+        bumperBack.rotation.y = Math.PI;
+        group.add(bumperBack);
+      }
+    }
+    
+    return group;
+  }
+  
+  // 편성 생성
+  function createTrain(zStart, speed) {
+    const typeIdx = Math.floor(Math.random() * trainTypes.length);
+    const trainType = trainTypes[typeIdx];
+    const numCars = trainType.cars[Math.floor(Math.random() * trainType.cars.length)];
+    
+    const trainGroup = new THREE.Group();
+    trainGroup.position.set(AI_TRACK_X, TRAIN_Y, zStart);
+    
+    // 항상 반대 방향으로 달리므로 head/tail 고정
+    for (let i = 0; i < numCars; i++) {
+      const isHead = (i === 0);              // 첫 차량이 선두 (다가오는 방향)
+      const isTail = (i === numCars - 1);    // 마지막 차량이 후미
+      const car = createCar(trainType, isHead, isTail);
+      car.position.z = -i * (CAR_LENGTH + 1);  // 차량 간격 1m
+      trainGroup.add(car);
+    }
+    
+    // 회전 없음 (플레이어 진행 반대 방향에서 다가옴)
+    
+    scene.add(trainGroup);
+    
+    return {
+      group: trainGroup,
+      speed: speed,           // m/s
+      length: numCars * (CAR_LENGTH + 1),
+      active: true
+    };
+  }
+  
+  // 스폰 관리
+  let lastSpawnTime = 0;
+  const SPAWN_INTERVAL = 8000;  // 8초마다 스폰 시도
+  const MAX_AI_TRAINS = 3;      // 최대 동시 열차 수
+  const MIN_TRAIN_GAP = 2000;    // 열차 간 최소 간격 (m)
+  
+  function update(camZ, deltaTime) {
+    const now = performance.now();
+    
+    // 스폰 시도 (플레이어 진행 방향 앞에서 다가오도록)
+    if (now - lastSpawnTime > SPAWN_INTERVAL && aiTrains.length < MAX_AI_TRAINS) {
+      if (Math.random() < 0.7) {  // 70% 확률로 스폰
+        const spawnDist = 400 + Math.random() * 200;  // 400~600m 앞에서 스폰
+        const zStart = camZ + spawnDist;  // 카메라 앞쪽(멀리)에서 스폰
+        
+        // 기존 열차와 충분한 거리가 있는지 체크
+        let canSpawn = true;
+        for (const train of aiTrains) {
+          const gap = Math.abs(train.group.position.z - zStart);
+          if (gap < MIN_TRAIN_GAP + train.length) {
+            canSpawn = false;
+            break;
+          }
+        }
+        
+        if (canSpawn) {
+          // 모든 열차 같은 속도로 통일 (overlap 방지)
+          const speed = 25;  // 90 km/h 고정
+          aiTrains.push(createTrain(zStart, speed));
+          console.log(`[AI Train] 🚃 열차 스폰 @ z=${zStart.toFixed(0)}, speed=${(speed*3.6).toFixed(0)}km/h`);
+        }
+      }
+      lastSpawnTime = now;
+    }
+    
+    // 열차 이동 및 제거
+    for (let i = aiTrains.length - 1; i >= 0; i--) {
+      const train = aiTrains[i];
+      if (!train.active) continue;
+      
+      // 이동 (플레이어를 향해 = -z 방향으로 이동)
+      const move = train.speed * (deltaTime / 1000);
+      train.group.position.z -= move;
+      
+      // 카메라를 지나쳐 뒤로 600m 이상 가면 제거
+      const dist = camZ - train.group.position.z;
+      if (dist > 600) {
+        scene.remove(train.group);
+        train.group.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose && m.dispose());
+            } else {
+              obj.material.dispose && obj.material.dispose();
+            }
+          }
+        });
+        train.active = false;
+        aiTrains.splice(i, 1);
+      }
+    }
+  }
+  
+  // 리셋 (게임 재시작 시)
+  function reset() {
+    for (const train of aiTrains) {
+      scene.remove(train.group);
+      train.group.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose && m.dispose());
+          } else {
+            obj.material.dispose && obj.material.dispose();
+          }
+        }
+      });
+    }
+    aiTrains = [];
+    lastSpawnTime = 0;
+  }
+  
+  return { update, reset };
+})();
+
+// 전역에서 접근 가능하도록
+window.__aiTrainSystem = aiTrainSystem;
+console.log('[AI Train] ✓ AI 열차 시스템 초기화 완료');
+
 // --- 스크린도어 (PSD) 설정 ---
 let psdGroup = new THREE.Group();
 scene.add(psdGroup);
@@ -4752,7 +5089,7 @@ const y = (lowerName.includes('ktx') || lowerName.includes('999'))
   ? 3.0
   : lowerName.includes('e26')
     ? 3.5
-    : 2.8
+    : 2.9
   
 const z = 200 - rem;
 
@@ -4846,6 +5183,13 @@ camera.lookAt(xOffset, yOffset, zOffset);
     // 덤불 동적 업데이트 (카메라 500m 근방)
     if (window.__updateBushesAroundCamera) {
       window.__updateBushesAroundCamera(camera.position.z);
+    }
+
+    // 🚃 AI 열차 업데이트
+    if (window.__aiTrainSystem) {
+      const dt = t - (window.__lastAiTrainTime || t);
+      window.__lastAiTrainTime = t;
+      window.__aiTrainSystem.update(camera.position.z, dt);
     }
 
     // ===== 스카이돔은 카메라 자식이므로 자동으로 카메라를 따라감 =====
@@ -6501,6 +6845,11 @@ async function startRun(){
 
   //  새 런 시작할 때 HUD 스케일 리셋
   prevMaxDistance = 0;
+
+  //  AI 열차 리셋
+  if (window.__aiTrainSystem) {
+    window.__aiTrainSystem.reset();
+  }
 
   //  새 런 시작할 때 장애물 상태 / 팝업 완전 리셋
   hideObstaclePopups(); // 혹시 남아있는 팝업 닫기

@@ -1,5 +1,5 @@
 git add .
-git commit -m "minihud update"
+git commit -m "add ai train spawn"
 git push origin main
 
 pip install fastapi uvicorn[standard]
