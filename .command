@@ -1,5 +1,5 @@
 git add .
-git commit -m "add ai train spawn"
+git commit -m "add ai train sound"
 git push origin main
 
 pip install fastapi uvicorn[standard]

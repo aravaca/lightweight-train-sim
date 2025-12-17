@@ -2712,101 +2712,80 @@ function getInterpolatedState() {
   };
 }
 
-// --- Low-speed noise: Web Audio 기반 부드러운 루프 + 페이드 ---
-// 목표: 속도 <= 10 km/h 일 때 루프 재생, 10 km/h 부근에서 부드럽게 페이드아웃
+// --- 게임 종료 시 Noise 재생 (크게) ---
 const NOISE_PATH = '/static/E233/OriginalData/Sound/Noise.wav';
-// 최대 음량: 1.0은 unity(무증폭). 사용자가 요청에 따라 크게 증폭합니다.
-// 주의: 과도한 증폭은 클리핑/디스토션을 유발할 수 있습니다.
-const MAX_VOL = 6.0;      // 증폭값 — 필요하면 더 조정하세요
-const FADE_TIME = 2;   // 초 단위 페이드 시간
-let lastSpeedKmh = 999;
+const MAX_VOL = 6.0;      // 증폭값
+const FADE_TIME = 2;      // 초 단위 페이드 시간
 
-// HTMLAudioElement + AudioContext(Gain)를 사용해 볼륨을 미세 제어
-const zeroNoiseEl = new Audio(NOISE_PATH);
-zeroNoiseEl.loop = true;
-zeroNoiseEl.preload = 'auto';
-zeroNoiseEl.volume = 1.0;
+let finishedNoiseEl = null;
+let finishedNoiseGain = null;
+let finishedNoiseSource = null;
+let finishedNoisePlaying = false;
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const gainNode = audioCtx.createGain();
-gainNode.gain.value = 0.0; // 초기 무음
-let sourceNode = null;
-try {
-  sourceNode = audioCtx.createMediaElementSource(zeroNoiseEl);
-  sourceNode.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-} catch (e) {
-  // 일부 환경/브라우저에서는 실패할 수 있음; 그 경우에도 zeroNoiseEl 직접 제어로 폴백
-  console.debug('MediaElementSource unavailable, falling back to element playback.', e);
-}
-
-let zeroNoiseAllowed = false; // 사용자가 명시적으로 허용했는지
-let pauseAfterFadeTimeout = null;
-
-// UI 버튼 없이 자동 허용(사용자 상호작용 바인딩)으로 처리합니다.
-
-function _enableZeroNoiseOnUserGesture() {
-  zeroNoiseAllowed = true;
-  // resume audio context (브라우저에 따라 필요)
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(()=>{});
-  }
-  // try to play immediately if speed is low
-  _updateNoiseForSpeed(lastSpeedKmh / 3.6);
-}
-
-function _setGainSmooth(targetVol) {
+function _initFinishedNoise() {
+  if (finishedNoiseEl) return;
+  finishedNoiseEl = new Audio(NOISE_PATH);
+  finishedNoiseEl.loop = true;
+  finishedNoiseEl.preload = 'auto';
+  finishedNoiseEl.volume = 1.0;
   try {
-    const t0 = audioCtx.currentTime;
-    gainNode.gain.cancelScheduledValues(t0);
-    // 시작값을 현재 값으로 고정
-    gainNode.gain.setValueAtTime(gainNode.gain.value, t0);
-    gainNode.gain.linearRampToValueAtTime(Math.max(0, Math.min(MAX_VOL, targetVol)), t0 + FADE_TIME);
+    finishedNoiseGain = audioCtx.createGain();
+    finishedNoiseGain.gain.value = 0.0;
+    finishedNoiseSource = audioCtx.createMediaElementSource(finishedNoiseEl);
+    finishedNoiseSource.connect(finishedNoiseGain);
+    finishedNoiseGain.connect(audioCtx.destination);
   } catch (e) {
-    // ignore if audioCtx not usable
+    console.debug('finishedNoise Web Audio setup failed', e);
   }
 }
 
-function _tryPlayZeroNoise() {
-  if (!zeroNoiseAllowed) {
-    // 아직 허용되지 않으면 아무 동작 없이 리턴
-    return;
-  }
+function playFinishedNoise() {
+  if (finishedNoisePlaying) return;
+  _initFinishedNoise();
   try {
-    if (zeroNoiseEl.paused) {
-      zeroNoiseEl.play().catch(()=>{});
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(()=>{});
     }
-  } catch (e) {}
-}
-
-function _pauseAfterFade() {
-  if (pauseAfterFadeTimeout) clearTimeout(pauseAfterFadeTimeout);
-  pauseAfterFadeTimeout = setTimeout(() => {
-    try { if (!zeroNoiseEl.paused) { zeroNoiseEl.pause(); zeroNoiseEl.currentTime = 0; } } catch (e) {}
-  }, (FADE_TIME + 0.05) * 1000);
-}
-
-function _updateNoiseForSpeed(v_ms) {
-  // v_ms: m/s
-  lastSpeedKmh = v_ms * 3.6;
-  const v_kmh = lastSpeedKmh;
-  if (v_kmh == 0) {
-    // 0..10km/h 사이에서 볼륨 비례 (10→0)
-    const ratio = Math.max(0, Math.min(1, 1 - v_kmh / 10.0));
-    const targetVol = MAX_VOL * ratio;
-    _tryPlayZeroNoise();
-    _setGainSmooth(targetVol);
-    // clear any pending pause
-    if (pauseAfterFadeTimeout) { clearTimeout(pauseAfterFadeTimeout); pauseAfterFadeTimeout = null; }
-  } else {
-    // above threshold → fade to 0 and then pause
-    _setGainSmooth(0.0);
-    _pauseAfterFade();
+    finishedNoiseEl.play().catch(()=>{});
+    // 크게 재생 (MAX_VOL 사용)
+    if (finishedNoiseGain) {
+      const t0 = audioCtx.currentTime;
+      finishedNoiseGain.gain.cancelScheduledValues(t0);
+      finishedNoiseGain.gain.setValueAtTime(0, t0);
+      finishedNoiseGain.gain.linearRampToValueAtTime(MAX_VOL, t0 + 0.5); // 빠르게 볼륨 올림
+    }
+    finishedNoisePlaying = true;
+    console.debug('Finished noise started playing');
+  } catch (e) {
+    console.debug('playFinishedNoise error', e);
   }
 }
 
-// 메시지 수신에서 상태를 보고 속도(v)가 임계치 이하이면 재생, 아니면 페이드아웃
-// (보간 시스템은 위에서 이미 정의됨 - interpState 사용)
+function fadeOutFinishedNoise(fadeTime = 2.0) {
+  if (!finishedNoisePlaying || !finishedNoiseEl) return;
+  try {
+    if (finishedNoiseGain && audioCtx) {
+      const t0 = audioCtx.currentTime;
+      finishedNoiseGain.gain.cancelScheduledValues(t0);
+      finishedNoiseGain.gain.setValueAtTime(finishedNoiseGain.gain.value, t0);
+      finishedNoiseGain.gain.linearRampToValueAtTime(0, t0 + fadeTime);
+    }
+    // 페이드아웃 후 정지
+    setTimeout(() => {
+      try {
+        finishedNoiseEl.pause();
+        finishedNoiseEl.currentTime = 0;
+        finishedNoisePlaying = false;
+        console.debug('Finished noise faded out and stopped');
+      } catch (e) {}
+    }, fadeTime * 1000 + 100);
+  } catch (e) {
+    console.debug('fadeOutFinishedNoise error', e);
+  }
+}
+
+// AudioContext 생성 (finishedNoise에서 사용)
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 ws.addEventListener('message', (ev) => {
   try {
@@ -4172,6 +4151,165 @@ const aiTrainSystem = (() => {
   const BODY_HEIGHT = FACE_HEIGHT;  // 차체 높이 = face 높이
   const TRAIN_Y = 0.15;      // 레일 위 약간 띄움
   
+  // 🔊 AI Train Passing Sound with Doppler Effect
+  const PASSING_SOUND_PATH = '/static/E233/OriginalData/Sound/Run/Run_SlabShort.wav';
+  let passingAudioCtx = null;
+  let passingBuffer = null;
+  let activePassingSounds = new Map(); // trainId -> { source, gain, panner }
+  
+  // 패싱 사운드 초기화
+  async function initPassingSound() {
+    if (passingBuffer) return;
+    try {
+      passingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const response = await fetch(PASSING_SOUND_PATH);
+      const arrayBuffer = await response.arrayBuffer();
+      passingBuffer = await passingAudioCtx.decodeAudioData(arrayBuffer);
+      console.log('[AI Train] ✓ 패싱 사운드 로드 완료');
+    } catch (e) {
+      console.debug('[AI Train] 패싱 사운드 로드 실패', e);
+    }
+  }
+  
+  // 열차별 사운드 시작/업데이트
+  function updateTrainSound(train, camZ) {
+    if (!passingBuffer || !passingAudioCtx || gamePaused) return;
+    
+    const trainZ = train.group.position.z;
+    const trainLength = train.length || 100; // 열차 길이
+    const trainId = train.group.uuid;
+    
+    // 차량 배치: car.position.z = -i * (CAR_LENGTH + 1)
+    // i=0 (isHead): z = 0 → trainZ에 위치
+    // i=last (isTail): z = -(numCars-1)*21 → trainZ - trainLength + CAR_LENGTH
+    // 열차가 -z로 이동하므로 실제로:
+    // - leadingEdge (먼저 플레이어를 지나는 쪽) = trainZ - trainLength (후미차 끝)
+    // - trailingEdge (나중에 플레이어를 지나는 쪽) = trainZ + CAR_LENGTH/2 (선두차 끝)
+    const CAR_LENGTH = 20.0;
+    const leadingEdge = trainZ - trainLength + CAR_LENGTH/2;  // 플레이어가 먼저 만남
+    const trailingEdge = trainZ + CAR_LENGTH/2;               // 플레이어가 나중에 헤어짐
+    
+    const distToLeading = leadingEdge - camZ;   // 양수: 아직 안 왔음
+    const distToTrailing = trailingEdge - camZ; // 음수가 되면 완전히 지나감
+    
+    const maxDistApproach = 80;  // 다가올 때 들리는 거리
+    const maxDistLeave = 60;     // 멀어질 때 들리는 거리
+    
+    // 볼륨 계산
+    let volume;
+    if (distToLeading > 0) {
+      // 열차 앞쪽 끝이 아직 안 옴 → 다가오는 중
+      if (distToLeading > maxDistApproach) {
+        stopTrainSound(trainId);
+        return;
+      }
+      // 급격하게 증가
+      const distFactor = Math.max(0, 1 - distToLeading / maxDistApproach);
+      volume = Math.pow(distFactor, 3.0) * 0.9;
+    } else if (distToTrailing >= 0) {
+      // 열차가 내 옆을 지나는 중 → 최대 볼륨
+      volume = 0.9;
+    } else {
+      // 열차가 완전히 지나감 → 빠르게 볼륨 감소
+      const distFromTrailing = Math.abs(distToTrailing);
+      if (distFromTrailing > maxDistLeave) {
+        stopTrainSound(trainId);
+        return;
+      }
+      const distFactor = Math.max(0, 1 - distFromTrailing / maxDistLeave);
+      volume = Math.pow(distFactor, 3.0) * 0.9; // 급격하게 감소
+    }
+    
+    // 도플러 이펙트: 다가올 때 피치 높게, 멀어질 때 낮게
+    // 상대속도 = AI 열차 속도 + 플레이어 속도 (반대 방향이므로 합산)
+    const playerSpeed = (st && typeof st.v === 'number') ? st.v : 0;
+    const relSpeed = train.speed + playerSpeed; // m/s
+    const soundSpeed = 343; // 음속 (m/s)
+    
+    // distToLeading > 0: 열차가 다가오는 중 (피치 높게)
+    // distToTrailing < 0: 열차가 완전히 지나감 (피치 낮게)
+    let dopplerRatio;
+    if (distToLeading > 0) {
+      // 다가오는 중 - 피치 높게
+      dopplerRatio = soundSpeed / (soundSpeed - relSpeed * 0.8);
+    } else if (distToTrailing >= 0) {
+      // 내 옆을 지나는 중 - 앞쪽 끝이 지났고 뒤쪽 끝은 아직
+      // 부드럽게 전환 (1.2 → 0.85)
+      const passProgress = Math.abs(distToLeading) / trainLength; // 0~1
+      dopplerRatio = 1.2 - passProgress * 0.4; // 1.2 → 0.8
+    } else {
+      // 멀어지는 중 - 피치 낮게
+      dopplerRatio = soundSpeed / (soundSpeed + relSpeed * 0.8);
+    }
+    dopplerRatio = Math.max(0.65, Math.min(1.35, dopplerRatio)); // 클램프
+    
+    let soundData = activePassingSounds.get(trainId);
+    
+    if (!soundData && volume > 0.01) {
+      // 새로 사운드 시작
+      try {
+        if (passingAudioCtx.state === 'suspended') {
+          passingAudioCtx.resume();
+        }
+        
+        const source = passingAudioCtx.createBufferSource();
+        source.buffer = passingBuffer;
+        source.loop = true;
+        
+        // 저역통과 필터 (먹먹한 느낌)
+        const filter = passingAudioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 800; // 낮은 주파수만 통과 (먹먹함)
+        filter.Q.value = 0.7;
+        
+        const gain = passingAudioCtx.createGain();
+        gain.gain.value = volume;
+        
+        source.playbackRate.value = dopplerRatio;
+        
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(passingAudioCtx.destination);
+        source.start();
+        
+        activePassingSounds.set(trainId, { source, gain, filter });
+      } catch (e) {
+        console.debug('[AI Train] 사운드 시작 실패', e);
+      }
+    } else if (soundData) {
+      // 기존 사운드 업데이트
+      try {
+        const t = passingAudioCtx.currentTime;
+        soundData.gain.gain.setTargetAtTime(volume, t, 0.1);
+        soundData.source.playbackRate.setTargetAtTime(dopplerRatio, t, 0.05);
+        
+        // 거리에 따라 필터 주파수도 조절 (가까울수록 더 선명)
+        const filterFreq = 400 + distFactor * 1200; // 400~1600Hz
+        soundData.filter.frequency.setTargetAtTime(filterFreq, t, 0.1);
+      } catch (e) {}
+    }
+  }
+  
+  function stopTrainSound(trainId) {
+    const soundData = activePassingSounds.get(trainId);
+    if (soundData) {
+      try {
+        soundData.source.stop();
+      } catch (e) {}
+      activePassingSounds.delete(trainId);
+    }
+  }
+  
+  function stopAllSounds() {
+    for (const [id, soundData] of activePassingSounds) {
+      try { soundData.source.stop(); } catch (e) {}
+    }
+    activePassingSounds.clear();
+  }
+  
+  // 초기화 호출
+  initPassingSound();
+  
   // E233만 사용 (1000번대, 3000번대)
   // 텍스처 정리:
   // - face1: 앞면 (전두부), face2: 뒷면 (후두부)
@@ -4420,7 +4558,7 @@ const aiTrainSystem = (() => {
     // 스폰 시도 (플레이어 진행 방향 앞에서 다가오도록)
     if (now - lastSpawnTime > SPAWN_INTERVAL && aiTrains.length < MAX_AI_TRAINS) {
       if (Math.random() < 0.7) {  // 70% 확률로 스폰
-        const spawnDist = 400 + Math.random() * 200;  // 400~600m 앞에서 스폰
+        const spawnDist = 600 + Math.random() * 200;  // 400~600m 앞에서 스폰
         const zStart = camZ + spawnDist;  // 카메라 앞쪽(멀리)에서 스폰
         
         // 기존 열차와 충분한 거리가 있는지 체크
@@ -4452,9 +4590,13 @@ const aiTrainSystem = (() => {
       const move = train.speed * (deltaTime / 1000);
       train.group.position.z -= move;
       
+      // 패싱 사운드 업데이트 (도플러 효과)
+      updateTrainSound(train, camZ);
+      
       // 카메라를 지나쳐 뒤로 600m 이상 가면 제거
       const dist = camZ - train.group.position.z;
       if (dist > 600) {
+        stopTrainSound(train.group.uuid); // 사운드 정지
         scene.remove(train.group);
         train.group.traverse(obj => {
           if (obj.geometry) obj.geometry.dispose();
@@ -4474,6 +4616,7 @@ const aiTrainSystem = (() => {
   
   // 리셋 (게임 재시작 시)
   function reset() {
+    stopAllSounds(); // 모든 패싱 사운드 정지
     for (const train of aiTrains) {
       scene.remove(train.group);
       train.group.traverse(obj => {
@@ -6660,6 +6803,14 @@ window.continueToNextStation = function() {
     hideObstaclePopups();
 
     // Play door close once (best-effort). Prefer bveSoundEngine if available.
+    // doorclose 재생 완료 후 finishedNoise 페이드아웃
+    let doorCloseDuration = 2.0; // 기본값
+    try {
+      if (bveSoundEngine && bveSoundEngine.doorCloseBuffer) {
+        doorCloseDuration = bveSoundEngine.doorCloseBuffer.duration || 2.0;
+      }
+    } catch (e) {}
+    
     try {
       if (bveSoundEngine && typeof bveSoundEngine.playDoorClose === 'function') {
         bveSoundEngine.playDoorClose();
@@ -6676,6 +6827,11 @@ window.continueToNextStation = function() {
     } catch (e) {
       try { const doorAudio = new Audio('/static/E233/OriginalData/Sound/Door/DoorClose1.wav'); doorAudio.play().catch(()=>{}); } catch(e){}
     }
+    
+    // doorclose 재생 완료 후 finishedNoise 부드럽게 페이드아웃
+    setTimeout(() => {
+      try { fadeOutFinishedNoise(2.0); } catch (e) {}
+    }, doorCloseDuration * 1000);
 
     // If Random Scenario is enabled, randomize inputs (reuse existing logic)
     const rndEl = document.getElementById('rndToggle');
@@ -7563,6 +7719,31 @@ function toggleGamePause() {
       ws.send(JSON.stringify({ type: 'cmd', payload: { name: 'pause' } }));
     }
     
+    // 🔇 Mute all sounds on pause
+    try {
+      // BVE Sound Engine mute
+      if (bveSoundEngine && bveSoundEngine.master) {
+        bveSoundEngine._savedMasterGain = bveSoundEngine.master.gain.value;
+        bveSoundEngine.master.gain.value = 0;
+      }
+      // Finished noise mute
+      if (finishedNoiseGain) {
+        window._savedFinishedNoiseGain = finishedNoiseGain.gain.value;
+        finishedNoiseGain.gain.value = 0;
+      }
+      // Station melody mute
+      if (stationMelody && !stationMelody.paused) {
+        stationMelody._wasPausedByGame = false;
+        stationMelody.pause();
+        stationMelody._wasPausedByGame = true;
+      }
+      // Notch sound mute
+      if (notchSoundFile) { notchSoundFile.volume = 0; }
+      if (airDownZeroFile) { airDownZeroFile.volume = 0; }
+      if (airDownEBFile) { airDownEBFile.volume = 0; }
+      if (airUpFile) { airUpFile.volume = 0; }
+    } catch (e) { console.debug('pause mute error', e); }
+    
     // Show feedback
     if (fb) {
       fb.innerHTML = '<div class="ok">게임 일시정지됨 (P로 계속)</div>';
@@ -7577,6 +7758,28 @@ function toggleGamePause() {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'cmd', payload: { name: 'resume' } }));
     }
+    
+    // 🔊 Unmute all sounds on resume
+    try {
+      // BVE Sound Engine unmute
+      if (bveSoundEngine && bveSoundEngine.master && bveSoundEngine._savedMasterGain !== undefined) {
+        bveSoundEngine.master.gain.value = bveSoundEngine._savedMasterGain;
+      }
+      // Finished noise unmute
+      if (finishedNoiseGain && window._savedFinishedNoiseGain !== undefined) {
+        finishedNoiseGain.gain.value = window._savedFinishedNoiseGain;
+      }
+      // Station melody resume
+      if (stationMelody && stationMelody._wasPausedByGame) {
+        stationMelody.play().catch(()=>{});
+        stationMelody._wasPausedByGame = false;
+      }
+      // Notch sound unmute
+      if (notchSoundFile) { notchSoundFile.volume = 1; }
+      if (airDownZeroFile) { airDownZeroFile.volume = 1; }
+      if (airDownEBFile) { airDownEBFile.volume = 1; }
+      if (airUpFile) { airUpFile.volume = 1; }
+    } catch (e) { console.debug('resume unmute error', e); }
     
     // Show feedback
     if (fb) {
@@ -7854,6 +8057,9 @@ ws.onmessage = (ev) => {
     //  게임 종료 시점 감지 → 점수 오버레이 + 도어 열기 소리
   const nowFinished = !!st.finished;
   if (nowFinished && !lastFinishedFlag) {
+    // 게임 종료 시 NOISE.WAV 크게 재생
+    try { playFinishedNoise(); } catch (e) { console.debug('playFinishedNoise error', e); }
+    
     // Always show score overlay when game finishes (in both random and normal mode)
     let score = Number(st.score ?? 0);
     if (vehicle && vehicle.name) {
