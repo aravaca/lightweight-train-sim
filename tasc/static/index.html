@@ -1797,7 +1797,7 @@ function getAtcMaxSpeed(remaining_m) {
         </label>
 
         <label class="form-label"><span id="labelInitDist">거리 (m)</span>
-          <input id="inputDist" type="number" value="450" min="150" max="60000" step="100" class="form-input">
+          <input id="inputDist" type="number" value="500" min="150" max="60000" step="100" class="form-input">
         </label>
 
         <label class="form-label"><span id="labelGradeInput">경사도 (‰)</span>
@@ -4192,8 +4192,8 @@ const aiTrainSystem = (() => {
     const distToLeading = leadingEdge - camZ;   // 양수: 아직 안 왔음
     const distToTrailing = trailingEdge - camZ; // 음수가 되면 완전히 지나감
     
-    const maxDistApproach = 80;  // 다가올 때 들리는 거리
-    const maxDistLeave = 60;     // 멀어질 때 들리는 거리
+    const maxDistApproach = 200;  // 다가올 때 들리는 거리
+    const maxDistLeave = 100;     // 멀어질 때 들리는 거리
     
     // 볼륨 계산
     let volume;
@@ -4217,7 +4217,7 @@ const aiTrainSystem = (() => {
         return;
       }
       const distFactor = Math.max(0, 1 - distFromTrailing / maxDistLeave);
-      volume = Math.pow(distFactor, 3.0) * 0.9; // 급격하게 감소
+      volume = Math.pow(distFactor, 3.0) * 0.9; //  작게
     }
     
     // 도플러 이펙트: 다가올 때 피치 높게, 멀어질 때 낮게
@@ -4654,9 +4654,25 @@ const psdTexture = textureLoader.load('/static/textures/wall/psd1.jpg', function
     tex.minFilter = THREE.LinearMipmapLinearFilter;
 });
 
+// APD 텍스처 (e235용)
+const apdTexture = textureLoader.load('/static/textures/wall/apd.png', function(tex) {
+    tex.wrapS = THREE.RepeatWrapping; 
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+});
+
 const psdMat = new THREE.MeshBasicMaterial({
     map: psdTexture,
     side: THREE.DoubleSide
+});
+
+const apdMat = new THREE.MeshBasicMaterial({
+    map: apdTexture,
+    // side: THREE.DoubleSide,
+    transparent: false, // 투명도 활성화
+    alphaTest: 0.5     // 알파값 0.5 미만은 완전 투명
 });
 
 // 마지막으로 확인한 열차 이름을 저장할 변수
@@ -4675,9 +4691,9 @@ function buildScreenDoors(len) {
     }
 
     // --- 조건 확인 ---
-    // "seoul metro 3000" 문자열이 포함되어 있는지 확인
-    // 혹시 모르니 "3000"이나 "vvvf" 같은 키워드로도 걸리게 범위를 넓히고 싶다면 조건을 수정하세요.
-    const isTargetTrain = lowerName.includes('seoul metro 3000') || lowerName.includes('e235');
+    const isSeoulMetro3000 = lowerName.includes('seoul metro 3000');
+    const isE235 = lowerName.includes('e235');
+    const isTargetTrain = isSeoulMetro3000 || isE235;
 
     // 일단 무조건 기존 스크린도어 싹 지움 (리셋)
     while (psdGroup.children.length) {
@@ -4692,22 +4708,38 @@ function buildScreenDoors(len) {
 
     console.log("✅ 타겟 열차 확인됨! 스크린도어를 설치합니다.");
 
-    // --- 생성 로직 ---
-    const psdHeight = 2.3;
-    const psdThick = 0.3;
-    const segmentLength = 5.0; 
+    // --- 생성 로직 (e235는 APD, 그 외는 PSD) ---
+    let doorHeight, segmentLength, doorMaterial, doorTexture;
+    
+    if (isE235) {
+        // E235: APD (저상 스크린도어)
+        doorHeight = 1.3;
+        segmentLength = 6.0;
+        doorMaterial = apdMat;
+        doorTexture = apdTexture;
+        console.log("  → E235: APD 설치 (높이 1.3m, 폭 4.5m)");
+    } else {
+        // Seoul Metro 3000: PSD (풀 스크린도어)
+        doorHeight = 2.3;
+        segmentLength = 5.0;
+        doorMaterial = psdMat;
+        doorTexture = psdTexture;
+        console.log("  → Seoul Metro 3000: PSD 설치 (높이 2.3m, 폭 5.0m)");
+    }
+    
+    const psdThick = 0.2;
 
-    if (psdTexture) {
+    if (doorTexture) {
         const repeatCount = len / segmentLength;
-        psdTexture.repeat.set(repeatCount, 1); 
-        psdTexture.needsUpdate = true;
+        doorTexture.repeat.set(repeatCount, 1); 
+        doorTexture.needsUpdate = true;
     }
 
-    const geometry = new THREE.BoxGeometry(psdThick, psdHeight, len);
-    const psdMesh = new THREE.Mesh(geometry, psdMat);
+    const geometry = new THREE.BoxGeometry(psdThick, doorHeight, len);
+    const psdMesh = new THREE.Mesh(geometry, doorMaterial);
     
     // 위치 설정 (노란선 안쪽)
-    psdMesh.position.set(-1.85, platH + (psdHeight / 2), platZ - (len / 2));
+    psdMesh.position.set(-1.85, platH + (doorHeight / 2), platZ - (len / 2));
     
     psdGroup.add(psdMesh);
 }
@@ -5385,7 +5417,7 @@ class BveSoundEngine {
     this.master = ctx.createGain();
     
     // Adjust master volume based on train type (KTX and N700S tend to be quieter)
-    let masterVolume = 2.0;
+    let masterVolume = 1.0;
     if (trainType && (trainType.toLowerCase().includes('ktx') || trainType.toLowerCase().includes('n700'))) {
       masterVolume = 0.3; // bullet trains get lower volume
     }
@@ -6399,8 +6431,7 @@ function computeAnnouncementTriggerDistForCurrentTrain() {
   if (name.includes("ktx") || name.includes("n700s")) {
     return 3000;
   }
-  // 나머지는 500m
-  return 400;
+  return 450;
 }
 
 // Global keyboard handler: play horn on 'H' press (case-insensitive)
