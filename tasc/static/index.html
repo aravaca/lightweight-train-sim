@@ -173,6 +173,11 @@
   opacity: .75;
 }
 
+#miniGear {
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .mini-value {
   text-align: right;
   font-size: 15px;
@@ -207,7 +212,12 @@
 
 /* Late arrival styling - red text when timer goes negative */
 .mini-value.late {
-  color: #ff4444;
+  color: #ff4444 !important;
+}
+
+#miniTimer.late,
+#miniTimer.late * {
+  color: #ff4444 !important;
 }
 
 @media (max-width: 768px) {
@@ -1599,13 +1609,8 @@ function getAtcMaxSpeed(remaining_m) {
       </div>
 
       <div class="mini-row">
-        <span class="mini-label">Notch</span>
+        <span class="mini-label" id="miniGear">F</span>
         <span class="mini-value" id="miniNotch">-</span>
-      </div>
-
-      <div class="mini-row">
-        <span class="mini-label">Gear</span>
-        <span class="mini-value" id="miniGear">F</span>
       </div>
     </div>
   </div>
