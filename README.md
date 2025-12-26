@@ -3,6 +3,8 @@
  
 [Try PTS!⛅️ → Play full screen on PC](https://jrtasc.kro.kr/) 
 ---
+<img width="1913" height="1077" alt="jrets" src="https://github.com/user-attachments/assets/7ee236d8-8310-46d8-9eaf-679de23e2ee2" />
+
 
 A lightweight **web-based 3D railway simulation** replicating key control functions of **JR East/West and Korean EMUs**.  
 Unlike heavy simulators, PTS is designed for **essential driving skill training** on PCs, as it enables repetitive **braking** and **stop-point accuracy** practice.
@@ -83,6 +85,7 @@ is strictly prohibited without the express written permission of the author.
 - **Original Repository**: `https://github.com/E233-3639/BVE_E233-3000_Data.git`
 
 The vehicle data (OriginalData) included in the `tasc/static/E233` folder is provided by the above contributor. When using or distributing this data, you **must display the provider credit** in the project UI and documentation (e.g., README). This requirement follows the licensing and copyright attribution terms of the E233 data, so please ensure compliance.
+
 
 
 
