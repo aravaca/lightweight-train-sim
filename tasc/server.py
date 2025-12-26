@@ -85,7 +85,7 @@ class Vehicle:
             current_A = 10.5 # 9~12 m^2 정도에서 튜닝
             tech_efficiency = 0.85
         else:
-            current_Cd = 7 # 0.8~1.4
+            current_Cd = 1.4 # 0.8~1.4
             current_A = 9.5
             tech_efficiency = 1.0
 
@@ -321,7 +321,7 @@ class StoppingSim:
         self.pwr_accel = 0.0   # 동력 가속도 (forward_notch_accels 반영)
         
         # 기동 지연 상태 (정지 상태에서 가속 시 1.5초 지연)
-        self.pwr_startup_delay = 1.5  # 기동 지연 시간 (초)
+        self.pwr_startup_delay = 1.0  # 기동 지연 시간 (초)
         self.pwr_startup_timer = 0.0  # 현재 지연 타이머
         self.pwr_startup_active = False  # 기동 지연 중인지
         self.pwr_rampup_time = 2.0  # 람프업 시간 (초) - 부드러운 가속
@@ -1293,6 +1293,9 @@ class StoppingSim:
 
         # internal_notch가 더 높으면 그것을 사용
         effective_notch = max(st.lever_notch, st.internal_notch)
+
+        if self.tasc_active and st.lever_notch < 0: #가속 버그 해결
+            effective_notch = st.lever_notch
         
         # ATC 오버스피드 시에만 조건부 계산
         if self.state.atc_overspeed:
