@@ -3330,6 +3330,12 @@ const personTextureFiles = [
   "/static/textures/1000011013.png",
   "/static/textures/1000011014.png",
   "/static/textures/1000011016.png",
+  "/static/textures/degu1.png",
+  "/static/textures/degu2.png",
+  "/static/textures/minami.png",
+  "/static/textures/aiko.png",
+
+
 ]
 
 // PNG → Texture
@@ -4781,7 +4787,7 @@ window.__updatePlatformLength = function(newLen) {
     platformLen = newLen;
 
     if (window.spawnPeopleOnPlatform) {
-      const baseCount = 30; 
+      const baseCount = 50; 
       const factor = newLen / 210; 
       window.spawnPeopleOnPlatform(Math.round(baseCount * factor));
     }
@@ -6420,7 +6426,7 @@ async function initializeBveEngine(trainType = '') {
 
 // ===== Station announcement trigger (by distance) =====
 let announcementPlayed = false; // 이미 재생했는지
-let announcementTriggerDist = 400; // 현재 열차 기준 목표 거리
+let announcementTriggerDist = 499; // 현재 열차 기준 목표 거리
 let announcementArmed = false; // 트리거가 "무장"됐는지
 let lastRemaining = null; // 직전 remaining_m
 
@@ -6431,7 +6437,7 @@ function computeAnnouncementTriggerDistForCurrentTrain() {
   if (name.includes("ktx") || name.includes("n700s")) {
     return 3000;
   }
-  return 450;
+  return 499;
 }
 
 // Global keyboard handler: play horn on 'H' press (case-insensitive)
